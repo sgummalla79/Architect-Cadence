@@ -1,0 +1,28 @@
+{
+  "name": "architect-cadence",
+  "version": "0.1.0",
+  "description": "Scheduled Salesforce data updates",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "node scripts/copy-assets.js",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron . --dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:oauth": "tsx scripts/test-oauth.ts",
+    "test:run": "tsx scripts/test-run.ts",
+    "clean": "rimraf dist"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "electron": "^41.0.0",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.0"
+  },
+  "dependencies": {}
+}
