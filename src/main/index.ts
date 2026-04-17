@@ -3,8 +3,9 @@ import * as path from 'path';
 import {
   getJobConfigPath,
   loadJobConfig,
-  openConfigInEditor,
+  readJobConfigRaw,
   resolveLoginUrl,
+  saveJobConfigRaw,
   scaffoldSampleConfigIfMissing,
 } from './job-config';
 import { performOAuthFlow, DEFAULT_CLIENT_ID } from './oauth-flow';
@@ -20,6 +21,9 @@ import {
 } from './session';
 import { createSalesforceClient } from './salesforce-client';
 import { runJob, RunResult } from './job-runner';
+import { appendLog, getLogPath, LogEntry, LogWindow, readLogs } from './log-store';
+import { randomUUID } from 'crypto';
+import { validateConfig } from '../shared';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -55,8 +59,9 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 720,
     height: 760,
-    minWidth: 640,
-    minHeight: 560,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     show: false,
     frame: true,
     backgroundColor: '#0f1419',
@@ -121,16 +126,25 @@ function updateTrayMenu(): void {
   tray.setContextMenu(menu);
 }
 
-// Push a completed run result to the renderer's log panel.
-function pushRunToUi(result: RunResult): void {
-  if (!mainWindow) return;
-  const level = result.ok ? 'success' : 'error';
-  const prefix = result.ok ? '✓' : '✗';
-  mainWindow.webContents.send('log:append', {
-    ts: new Date().toLocaleString('sv-SE').replace('T', ' '),
-    level,
-    message: `${prefix} ${result.message} (${result.durationMs}ms)`,
-  });
+// Persist a completed run to disk + push it to the renderer's log panel.
+function recordRun(result: RunResult): void {
+  const entry: LogEntry = {
+    ts: new Date().toISOString(),
+    level: result.ok ? 'success' : 'error',
+    message: `${result.ok ? '✓' : '✗'} ${result.message}`,
+    durationMs: result.durationMs,
+    matchedCount: result.matchedCount,
+    updatedCount: result.updatedCount,
+    failedCount: result.failedCount,
+    recordIds: result.recordIds.length > 0 ? result.recordIds : undefined,
+    runId: randomUUID(),
+  };
+  try {
+    appendLog(entry);
+  } catch (err) {
+    console.error(`[log] Failed to persist log entry: ${(err as Error).message}`);
+  }
+  mainWindow?.webContents.send('log:append', entry);
 }
 
 // ============ IPC ============
@@ -152,7 +166,7 @@ ipcMain.handle('state:set-time', (_e, time: string) => {
 
 ipcMain.handle('action:run-now', async () => {
   const result = await executeJob();
-  pushRunToUi(result);
+  recordRun(result);
   return { ok: result.ok, message: result.message };
 });
 
@@ -257,28 +271,49 @@ ipcMain.handle('action:test-connection', async () => {
   }
 });
 
-// --- Config ---
+// --- Config (in-app editor) ---
 
-ipcMain.handle('action:edit-config', async () => {
+ipcMain.handle('config:read', () => {
+  // Auto-scaffold so the editor is never empty on first launch.
+  scaffoldSampleConfigIfMissing();
+  const text = readJobConfigRaw();
+  return { ok: true, text };
+});
+
+ipcMain.handle('config:validate', (_e, rawText: string) => {
+  let parsed: unknown;
   try {
-    await openConfigInEditor();
-    return { ok: true, message: `Opened ${getJobConfigPath()}` };
+    parsed = JSON.parse(rawText);
   } catch (err) {
-    return { ok: false, message: (err as Error).message };
+    return { ok: false, errors: [`Not valid JSON: ${(err as Error).message}`] };
   }
+  const v = validateConfig(parsed);
+  return v.ok
+    ? { ok: true, message: `Config valid — object: ${v.config.object}` }
+    : { ok: false, errors: v.errors };
 });
 
-ipcMain.handle('action:validate-config', () => {
-  const result = loadJobConfig();
-  if (result.ok) {
-    return { ok: true, message: `Config valid — object: ${result.config.object}` };
-  }
-  return { ok: false, message: result.errors.join('; ') };
+ipcMain.handle('config:save', (_e, rawText: string) => {
+  const result = saveJobConfigRaw(rawText);
+  if (!result.ok) return { ok: false, errors: result.errors };
+  return { ok: true, formatted: result.formatted, message: 'Config saved' };
 });
 
-ipcMain.handle('action:clear-logs', () => {
-  // UI-only per spec; nothing to do in main.
-  return { ok: true };
+// --- Paths (About tab) ---
+
+ipcMain.handle('paths:get', () => {
+  return {
+    configPath: getJobConfigPath(),
+    logPath: getLogPath(),
+  };
+});
+
+ipcMain.handle('logs:get', (_e, window: LogWindow) => {
+  try {
+    return { ok: true, entries: readLogs(window) };
+  } catch (err) {
+    return { ok: false, entries: [] as LogEntry[], message: (err as Error).message };
+  }
 });
 
 // ============ Lifecycle ============

@@ -11,9 +11,18 @@ const api = {
   signIn: () => ipcRenderer.invoke('action:sign-in'),
   resetConnection: () => ipcRenderer.invoke('action:reset-connection'),
   testConnection: () => ipcRenderer.invoke('action:test-connection'),
-  editConfig: () => ipcRenderer.invoke('action:edit-config'),
-  validateConfig: () => ipcRenderer.invoke('action:validate-config'),
-  clearLogs: () => ipcRenderer.invoke('action:clear-logs'),
+
+  // Config (in-app editor)
+  configRead: () => ipcRenderer.invoke('config:read'),
+  configValidate: (text: string) => ipcRenderer.invoke('config:validate', text),
+  configSave: (text: string) => ipcRenderer.invoke('config:save', text),
+
+  // Logs
+  getLogs: (window: 'last-run' | '3d' | '7d' | '15d' | '30d') =>
+    ipcRenderer.invoke('logs:get', window),
+
+  // Paths (About tab)
+  getPaths: () => ipcRenderer.invoke('paths:get'),
 
   // Subscriptions
   onStateChanged: (cb: (state: any) => void) =>

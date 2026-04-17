@@ -1,7 +1,5 @@
 // Renderer-side logic.
 // Wrapped in an IIFE so top-level declarations don't leak to global scope.
-// This means if the script somehow gets loaded twice (hot-reload, caching quirks,
-// etc.), each load creates its own scope and `const cadence` can never collide.
 
 (() => {
   console.log('[renderer] script loaded at', new Date().toISOString());
@@ -19,6 +17,17 @@
     message?: string;
   }
 
+  type LogWindowKey = 'last-run' | '3d' | '7d' | '15d' | '30d';
+
+  interface LogEntry {
+    ts: string;
+    level: 'info' | 'success' | 'error';
+    message: string;
+    durationMs?: number;
+    recordIds?: string[];
+    runId?: string;
+  }
+
   interface CadenceApi {
     getState: () => Promise<AppState>;
     setActive: (isActive: boolean) => Promise<AppState>;
@@ -27,12 +36,14 @@
     signIn: () => Promise<{ ok: boolean; state: AppState; message?: string }>;
     resetConnection: () => Promise<{ ok: boolean; state: AppState }>;
     testConnection: () => Promise<ActionResult>;
-    editConfig: () => Promise<ActionResult>;
-    validateConfig: () => Promise<ActionResult>;
-    clearLogs: () => Promise<ActionResult>;
+    configRead: () => Promise<{ ok: boolean; text: string }>;
+    configValidate: (text: string) => Promise<{ ok: boolean; message?: string; errors?: string[] }>;
+    configSave: (text: string) => Promise<{ ok: boolean; message?: string; formatted?: string; errors?: string[] }>;
+    getLogs: (window: LogWindowKey) => Promise<{ ok: boolean; entries: LogEntry[]; message?: string }>;
+    getPaths: () => Promise<{ configPath: string; logPath: string }>;
     onStateChanged: (cb: (state: AppState) => void) => void;
     onTrayRunNow: (cb: () => void) => void;
-    onLogAppend: (cb: (entry: { ts: string; level: 'info' | 'success' | 'error'; message: string }) => void) => void;
+    onLogAppend: (cb: (entry: LogEntry) => void) => void;
   }
 
   const cadence = (window as unknown as { cadence: CadenceApi }).cadence;
@@ -77,14 +88,16 @@
   // ============ State rendering ============
 
   function render(state: AppState): void {
-    const orgBar = $('orgBar');
-    const orgText = $('orgText');
+    const connStatus = $('connStatus');
+    const connStatusLabel = connStatus.querySelector('.status-label')!;
     if (state.isConnected) {
-      orgBar.classList.add('connected');
-      orgText.textContent = `${state.orgDomain} · ${state.username}`;
+      connStatus.classList.remove('disconnected');
+      connStatus.classList.add('connected');
+      connStatusLabel.textContent = 'Connected';
     } else {
-      orgBar.classList.remove('connected');
-      orgText.textContent = 'Not connected';
+      connStatus.classList.remove('connected');
+      connStatus.classList.add('disconnected');
+      connStatusLabel.textContent = 'Disconnected';
     }
 
     const pill = $('activeToggle');
@@ -135,34 +148,107 @@
     }
   }
 
-  // ============ Log rendering ============
+  // ============ Logs ============
 
-  interface LogEntry {
-    ts: string;
-    level: 'success' | 'error' | 'info';
-    message: string;
+  let allLogs: LogEntry[] = [];
+  let currentWindow: LogWindowKey = '3d';
+
+  function formatTs(ts: string): string {
+    const d = new Date(ts);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
-
-  const logs: LogEntry[] = [];
 
   function renderLogs(): void {
     const container = $('logs');
-    if (logs.length === 0) {
+    if (allLogs.length === 0) {
       container.innerHTML = '<div class="logs-empty">No logs yet.</div>';
       return;
     }
-    container.innerHTML = logs
-      .map(
-        (l) =>
-          `<div class="log-entry ${l.level}"><span class="ts">[${l.ts}]</span>${escapeHtml(l.message)}</div>`
-      )
+    container.innerHTML = allLogs
+      .map((l, idx) => {
+        const dur = l.durationMs !== undefined ? ` <span class="dur">(${l.durationMs}ms)</span>` : '';
+        const hasIds = l.recordIds && l.recordIds.length > 0;
+        const disclosure = hasIds
+          ? ` <button class="ids-toggle" data-log-idx="${idx}" type="button">▸ Show ${l.recordIds!.length} ID${l.recordIds!.length === 1 ? '' : 's'}</button>` +
+            `<div class="ids-list" id="ids-${idx}" hidden>${l.recordIds!.map(escapeHtml).join(', ')}</div>`
+          : '';
+        return `<div class="log-entry ${l.level}"><span class="ts">[${formatTs(l.ts)}]</span>${escapeHtml(l.message)}${dur}${disclosure}</div>`;
+      })
       .join('');
+
+    // Wire toggle buttons (delegated would also work; explicit is simpler here).
+    container.querySelectorAll<HTMLButtonElement>('.ids-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = btn.dataset.logIdx!;
+        const list = document.getElementById(`ids-${idx}`) as HTMLDivElement;
+        const isHidden = list.hidden;
+        list.hidden = !isHidden;
+        const count = (allLogs[Number(idx)].recordIds ?? []).length;
+        btn.textContent = `${isHidden ? '▾' : '▸'} ${isHidden ? 'Hide' : 'Show'} ${count} ID${count === 1 ? '' : 's'}`;
+      });
+    });
   }
 
-  function addLog(message: string, level: LogEntry['level'] = 'info'): void {
-    const ts = new Date().toLocaleString('sv-SE').replace('T', ' ');
-    logs.unshift({ ts, level, message });
-    renderLogs();
+  async function refreshLogsFromMain(): Promise<void> {
+    const result = await cadence.getLogs(currentWindow);
+    if (result.ok) {
+      allLogs = result.entries;
+      renderLogs();
+    }
+  }
+
+  // ============ Config editor ============
+
+  let savedConfigText = ''; // last persisted text — used to detect "dirty"
+  let isEditingConfig = false;
+
+  function setEditorMode(editing: boolean): void {
+    isEditingConfig = editing;
+    const editor = $('configEditor') as HTMLTextAreaElement;
+    const editBtn = $('editConfigBtn') as HTMLButtonElement;
+
+    editor.readOnly = !editing;
+    editBtn.textContent = editing ? 'Cancel' : 'Edit';
+    updateSaveButtonState();
+
+    if (editing) editor.focus();
+  }
+
+  function isDirty(): boolean {
+    if (!isEditingConfig) return false;
+    const editor = $('configEditor') as HTMLTextAreaElement;
+    return editor.value !== savedConfigText;
+  }
+
+  function updateSaveButtonState(): void {
+    const saveBtn = $('saveConfigBtn') as HTMLButtonElement;
+    saveBtn.disabled = !isDirty();
+
+    const status = $('configStatus');
+    if (isEditingConfig && isDirty()) {
+      status.textContent = 'Unsaved changes';
+      status.className = 'config-status dirty';
+    }
+  }
+
+  function setConfigStatus(text: string, kind: 'success' | 'error' | '' = ''): void {
+    const status = $('configStatus');
+    status.textContent = text;
+    status.className = `config-status${kind ? ' ' + kind : ''}`;
+  }
+
+  async function loadConfigEditor(): Promise<void> {
+    const result = await cadence.configRead();
+    if (result.ok) {
+      const editor = $('configEditor') as HTMLTextAreaElement;
+      editor.value = result.text;
+      savedConfigText = result.text;
+      setEditorMode(false);
+      setConfigStatus('Loaded from disk');
+    } else {
+      setConfigStatus('Could not read config', 'error');
+    }
   }
 
   // ============ Button handlers ============
@@ -195,15 +281,7 @@
     }
   });
 
-  $('clearLogsBtn').addEventListener('click', async () => {
-    logs.length = 0;
-    renderLogs();
-    await cadence.clearLogs();
-    showToast('Logs cleared (display only)');
-  });
-
   $('signInBtn').addEventListener('click', async () => {
-    addLog('Sign In clicked — opening browser…', 'info');
     const signInBtn = $('signInBtn') as HTMLButtonElement;
     const originalText = signInBtn.textContent;
     signInBtn.disabled = true;
@@ -212,17 +290,14 @@
       const r = await cadence.signIn();
       if (r.ok) {
         render(r.state);
-        addLog(`Signed in as ${r.state.username}`, 'success');
         showToast(`Signed in as ${r.state.username}`, 'success');
       } else {
-        addLog(r.message ?? 'Sign-in failed', 'error');
         showToast(r.message ?? 'Sign-in failed', 'error');
         signInBtn.disabled = false;
         signInBtn.textContent = originalText;
       }
     } catch (err) {
-      addLog((err as Error).message, 'error');
-      showToast('Sign-in failed', 'error');
+      showToast((err as Error).message, 'error');
       signInBtn.disabled = false;
       signInBtn.textContent = originalText;
     }
@@ -233,7 +308,6 @@
     const r = await cadence.resetConnection();
     if (r.ok) {
       render(r.state);
-      addLog('Connection reset', 'info');
       showToast('Connection reset');
     }
   });
@@ -243,30 +317,82 @@
     showToast(r.message ?? (r.ok ? 'OK' : 'Failed'), r.ok ? 'success' : 'error');
   });
 
-  $('editConfigBtn').addEventListener('click', async () => {
-    await cadence.editConfig();
-    showToast('Edit Config (stub) — Module 2');
+  // --- Config editor ---
+
+  $('editConfigBtn').addEventListener('click', () => {
+    if (isEditingConfig) {
+      // Currently editing → behave as Cancel.
+      if (isDirty()) {
+        if (!confirm('Discard unsaved changes?')) return;
+      }
+      const editor = $('configEditor') as HTMLTextAreaElement;
+      editor.value = savedConfigText;
+      setEditorMode(false);
+      setConfigStatus('Changes discarded');
+    } else {
+      setEditorMode(true);
+      setConfigStatus('Editing — make changes, then click Save');
+    }
   });
 
   $('validateConfigBtn').addEventListener('click', async () => {
-    const r = await cadence.validateConfig();
-    const status = $('configStatus');
-    status.textContent = r.ok ? `✓ ${r.message ?? 'Config valid'}` : `✗ ${r.message ?? 'Invalid'}`;
-    status.className = `config-status ${r.ok ? 'success' : 'error'}`;
+    const editor = $('configEditor') as HTMLTextAreaElement;
+    const r = await cadence.configValidate(editor.value);
+    if (r.ok) {
+      setConfigStatus(`✓ ${r.message ?? 'Config valid'}`, 'success');
+    } else {
+      const errs = r.errors ?? [r.message ?? 'Invalid'];
+      setConfigStatus(`✗ ${errs.join('\n  ')}`, 'error');
+    }
+  });
+
+  $('saveConfigBtn').addEventListener('click', async () => {
+    const editor = $('configEditor') as HTMLTextAreaElement;
+    const r = await cadence.configSave(editor.value);
+    if (r.ok) {
+      // Auto-format applied by main; reflect that in the editor.
+      if (r.formatted) {
+        editor.value = r.formatted;
+        savedConfigText = r.formatted;
+      } else {
+        savedConfigText = editor.value;
+      }
+      setEditorMode(false);
+      setConfigStatus('✓ Saved', 'success');
+      showToast('Config saved', 'success');
+    } else {
+      const errs = r.errors ?? [r.message ?? 'Save failed'];
+      setConfigStatus(`✗ Cannot save:\n  ${errs.join('\n  ')}`, 'error');
+      showToast('Config invalid — see details', 'error');
+    }
+  });
+
+  $('configEditor').addEventListener('input', () => {
+    if (isEditingConfig) updateSaveButtonState();
+  });
+
+  $('logRange').addEventListener('change', async (e) => {
+    currentWindow = (e.target as HTMLSelectElement).value as LogWindowKey;
+    await refreshLogsFromMain();
   });
 
   // ============ Subscriptions ============
 
   cadence.onStateChanged((state) => render(state));
   cadence.onTrayRunNow(() => {
-    addLog('Run Now triggered from tray', 'info');
+    // Tray-initiated runs result in a log:append from main.
   });
-  cadence.onLogAppend((entry) => {
-    logs.unshift(entry);
-    renderLogs();
+  cadence.onLogAppend((_entry) => {
+    void refreshLogsFromMain();
   });
 
   // ============ Boot ============
 
   cadence.getState().then(render);
+  void refreshLogsFromMain();
+  void loadConfigEditor();
+  void cadence.getPaths().then((p) => {
+    $('aboutConfigPath').textContent = p.configPath;
+    $('aboutLogPath').textContent = p.logPath;
+  });
 })();

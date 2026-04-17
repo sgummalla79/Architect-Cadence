@@ -18,6 +18,8 @@
   --radius-sm: 6px;
 }
 
+html, body { height: 100%; }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   background: var(--bg);
@@ -25,12 +27,43 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  overflow: hidden; /* the .content section scrolls; the page itself does not */
 }
+
+/* ===== App layout: fixed chrome on top, scrollable content below ===== */
 
 .app {
   max-width: 720px;
   margin: 0 auto;
-  padding: 20px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chrome {
+  flex: 0 0 auto;
+  padding: 20px 20px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 5;
+}
+
+.content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* allow children to shrink properly inside flex */
+}
+
+/* The active tab panel fills the content area so its cards can stretch. */
+.tab-panel { display: none; }
+.tab-panel.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* ===== Persistent app header ===== */
@@ -38,8 +71,7 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 0 4px 18px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 4px 14px;
 }
 
 .app-icon {
@@ -78,8 +110,6 @@ body {
 .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
-  margin-top: 4px;
 }
 
 .tab {
@@ -93,7 +123,7 @@ body {
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
   font-family: inherit;
-  margin-bottom: -1px; /* overlap border */
+  margin-bottom: -1px; /* overlap chrome border */
 }
 
 .tab:hover { color: var(--text); }
@@ -101,31 +131,6 @@ body {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
-
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
-
-/* ===== Org connection ribbon ===== */
-.org-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
-  margin: 14px 0;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.org-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--text-dim);
-}
-
-.org-bar.connected .org-dot { background: var(--success); }
-.org-bar.connected { color: var(--text); }
 
 /* ===== Card ===== */
 .card {
@@ -135,6 +140,59 @@ body {
   padding: 20px;
   margin-bottom: 14px;
 }
+
+/* The Schedule tab is a single card that should fill the panel vertically.
+   When that card holds the logs section, the logs grow to fill the remainder. */
+.tab-panel[data-panel="schedule"] .card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+/* Settings tab: the second card (Job Configuration) stretches; the editor
+   inside it fills the remaining card height. */
+.tab-panel[data-panel="settings"] {
+  /* Make the panel itself stretchable for the config card. */
+}
+.tab-panel[data-panel="settings"] .card.stretch {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+/* Right-side header cluster: status chip + active pill */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Status chip: small, informational. Not a button. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.status-chip.connected .status-dot { background: var(--success); }
+.status-chip.connected { color: var(--success); }
+.status-chip.disconnected .status-dot { background: var(--danger); }
+.status-chip.disconnected { color: var(--danger-soft); }
 
 /* ===== Active pill (toggle in header) ===== */
 .pill {
@@ -217,6 +275,24 @@ body {
 
 .logs-header { justify-content: space-between; }
 
+.log-range {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 28px 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%237d8590' d='M0 0l5 6 5-6z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.log-range:focus { outline: none; border-color: var(--accent); }
+.log-range:hover { border-color: var(--text-muted); }
+
 /* ===== Buttons ===== */
 .btn {
   padding: 8px 18px;
@@ -266,8 +342,8 @@ body {
 /* ===== Logs ===== */
 .logs {
   margin-top: 14px;
+  flex: 1 1 auto;
   min-height: 200px;
-  max-height: 360px;
   overflow-y: auto;
   font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
   font-size: 12.5px;
@@ -290,6 +366,38 @@ body {
 .log-entry.success { color: var(--success); }
 .log-entry.error { color: var(--danger-soft); }
 .log-entry .ts { color: var(--text-dim); margin-right: 8px; }
+.log-entry .dur { color: var(--text-dim); font-size: 11px; margin-left: 4px; }
+
+.ids-toggle {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ids-toggle:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.ids-list {
+  margin: 6px 0 4px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11.5px;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
 
 /* ===== Settings tab ===== */
 .section-title {
@@ -322,35 +430,73 @@ body {
 .conn-primary { font-weight: 600; margin-bottom: 2px; }
 .conn-secondary { font-size: 12px; color: var(--text-muted); }
 
-.config-summary {
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-}
-
-.config-row {
+/* ===== Config editor ===== */
+.config-header {
   display: flex;
   justify-content: space-between;
-  padding: 4px 0;
-  font-size: 13px;
-  color: var(--text-muted);
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 12px;
 }
 
-.config-row code {
+.config-header .section-title { margin-bottom: 0; padding-top: 8px; }
+
+.config-actions { margin-top: 0; }
+
+.config-editor {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 200px;
+  background: var(--bg-elevated);
   color: var(--text);
-  font-family: 'SF Mono', Menlo, Monaco, monospace;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
   font-size: 12.5px;
+  line-height: 1.55;
+  resize: none;
+  user-select: text;
+  -webkit-user-select: text;
+  tab-size: 2;
+}
+
+.config-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.config-editor[readonly] {
+  color: var(--text-muted);
+  cursor: default;
 }
 
 .config-status {
   margin-top: 10px;
   font-size: 12px;
   color: var(--text-muted);
+  white-space: pre-wrap;
 }
 .config-status.success { color: var(--success); }
 .config-status.error { color: var(--danger-soft); }
+.config-status.dirty { color: var(--accent); }
 
-.about .config-row { padding: 6px 0; }
+/* About tab — simple key-value rows */
+.config-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  gap: 16px;
+}
+.config-row code {
+  color: var(--text);
+  font-family: 'SF Mono', Menlo, Monaco, monospace;
+  font-size: 12.5px;
+  text-align: right;
+  word-break: break-all;
+}
 
 /* ===== Toast ===== */
 .toast {

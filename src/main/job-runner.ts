@@ -90,7 +90,7 @@ export async function runJob(params: RunParams): Promise<RunResult> {
         matchedCount: matched.length,
         recordIds,
         message:
-          `Found ${matched.length} record(s) that would be updated (${recordIds.join(', ')}). ` +
+          `Found ${matched.length} record(s) that would be updated. ` +
           `Update not executed because the app is Inactive.`,
       });
     }

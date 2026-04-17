@@ -3,7 +3,7 @@
 // user can edit it via the Settings tab's "Edit Config" button without having
 // to construct the file manually.
 
-import { app, shell } from 'electron';
+import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { normalizeLoginUrl } from './oauth';
@@ -65,13 +65,42 @@ export function loadJobConfig(): ValidationResult {
   return validateConfig(parsed);
 }
 
-/** Open the config file in the user's default editor. Creates it first if missing. */
-export async function openConfigInEditor(): Promise<void> {
+/** Read the raw JSON text of the config file. Returns empty string if missing. */
+export function readJobConfigRaw(): string {
   const p = getJobConfigPath();
-  if (!fs.existsSync(p)) {
-    writeSampleConfig();
+  if (!fs.existsSync(p)) return '';
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch {
+    return '';
   }
-  await shell.openPath(p);
+}
+
+/**
+ * Validate then write the given raw JSON to the config file. Auto-formats
+ * with 2-space indentation. Returns the formatted text on success, or a
+ * ValidationResult with errors otherwise.
+ */
+export function saveJobConfigRaw(rawText: string): ValidationResult & { formatted?: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (err) {
+    return { ok: false, errors: [`Not valid JSON: ${(err as Error).message}`] };
+  }
+
+  const validation = validateConfig(parsed);
+  if (!validation.ok) return validation;
+
+  const formatted = JSON.stringify(parsed, null, 2) + '\n';
+  const p = getJobConfigPath();
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, formatted, 'utf8');
+  } catch (err) {
+    return { ok: false, errors: [`Could not write config: ${(err as Error).message}`] };
+  }
+  return { ok: true, config: validation.config, formatted };
 }
 
 /**
@@ -88,14 +117,14 @@ export function scaffoldSampleConfigIfMissing(): boolean {
 function writeSampleConfig(): void {
   const p = getJobConfigPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(SAMPLE_CONFIG, null, 2), 'utf8');
+  fs.writeFileSync(p, JSON.stringify(SAMPLE_CONFIG, null, 2) + '\n', 'utf8');
 }
 
 // ============ Sample config ============
 // Matches the spec example. Users should edit this to match their real setup.
 
 const SAMPLE_CONFIG: JobConfig = {
-  domain: 'exp-cloud.my.salesforce.com',
+  domain: 'your-org.my.salesforce.com',
   apiVersion: 'v66.0',
   logLevel: 'info',
   object: 'Student__c',

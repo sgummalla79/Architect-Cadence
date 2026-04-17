@@ -2,108 +2,129 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
     <title>Architect Cadence</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="app">
-      <!-- ============ PERSISTENT HEADER ============ -->
-      <header class="app-header">
-        <div class="app-icon" id="appIcon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="5 12 10 17 19 7"></polyline>
-          </svg>
-        </div>
-        <div class="app-meta">
-          <h1>Architect Cadence</h1>
-          <p>Auto-update Architect Engagements daily</p>
-        </div>
-        <button class="pill" id="activeToggle">
-          <span class="pill-dot"></span>
-          <span class="pill-label">Active</span>
-        </button>
-      </header>
+      <!-- ============ FIXED CHROME (header + tabs) ============ -->
+      <div class="chrome">
+        <header class="app-header">
+          <div class="app-icon" id="appIcon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="5 12 10 17 19 7"></polyline>
+            </svg>
+          </div>
+          <div class="app-meta">
+            <h1>Architect Cadence</h1>
+            <p>Auto-update Architect Engagements daily</p>
+          </div>
+          <div class="header-actions">
+            <span class="status-chip disconnected" id="connStatus">
+              <span class="status-dot"></span>
+              <span class="status-label">Disconnected</span>
+            </span>
+            <button class="pill" id="activeToggle">
+              <span class="pill-dot"></span>
+              <span class="pill-label">Active</span>
+            </button>
+          </div>
+        </header>
 
-      <!-- ============ TAB BAR ============ -->
-      <nav class="tabs">
-        <button class="tab active" data-tab="schedule">Schedule</button>
-        <button class="tab" data-tab="settings">Settings</button>
-      </nav>
-
-      <!-- ============ CONNECTION RIBBON (always visible) ============ -->
-      <div class="org-bar" id="orgBar">
-        <span class="org-dot" id="orgDot"></span>
-        <span class="org-text" id="orgText">Not connected</span>
+        <nav class="tabs">
+          <button class="tab active" data-tab="schedule">Schedule</button>
+          <button class="tab" data-tab="settings">Settings</button>
+          <button class="tab" data-tab="about">About</button>
+        </nav>
       </div>
 
-      <!-- ============ TAB 1: SCHEDULE ============ -->
-      <section class="tab-panel active" data-panel="schedule">
-        <div class="card">
-          <div class="row schedule-row">
-            <label class="row-label">DAILY RUN</label>
-            <input type="time" id="timeInput" class="time-input" value="15:22" />
-            <button class="btn btn-primary" id="runNowBtn">Run Now</button>
+      <!-- ============ SCROLLABLE CONTENT ============ -->
+      <main class="content">
+        <!-- TAB 1: Schedule -->
+        <section class="tab-panel active" data-panel="schedule">
+          <div class="card">
+            <div class="row schedule-row">
+              <label class="row-label">DAILY RUN</label>
+              <input type="time" id="timeInput" class="time-input" value="15:22" />
+              <button class="btn btn-primary" id="runNowBtn">Run Now</button>
+            </div>
+
+            <div class="next-run" id="nextRun">Next run: today at 3:22 PM</div>
+
+            <div class="divider"></div>
+
+            <div class="row logs-header">
+              <label class="row-label">EXECUTION HISTORY</label>
+              <select id="logRange" class="log-range">
+                <option value="last-run">Last run</option>
+                <option value="3d" selected>Last 3 days</option>
+                <option value="7d">Last 7 days</option>
+                <option value="15d">Last 15 days</option>
+                <option value="30d">Last 30 days</option>
+              </select>
+            </div>
+
+            <div class="logs" id="logs">
+              <div class="logs-empty">No logs yet.</div>
+            </div>
           </div>
+        </section>
 
-          <div class="next-run" id="nextRun">Next run: today at 3:22 PM</div>
+        <!-- TAB 2: Settings -->
+        <section class="tab-panel" data-panel="settings">
+          <!-- Connection -->
+          <div class="card">
+            <h2 class="section-title">Connection</h2>
 
-          <div class="divider"></div>
+            <div class="conn-status">
+              <span class="conn-dot" id="connDot"></span>
+              <div class="conn-info">
+                <div class="conn-primary" id="connPrimary">Not connected</div>
+                <div class="conn-secondary" id="connSecondary">Sign in to authorize Salesforce access</div>
+              </div>
+            </div>
 
-          <div class="row logs-header">
-            <label class="row-label">EXECUTION HISTORY</label>
-            <button class="btn btn-danger-ghost" id="clearLogsBtn">Clear</button>
-          </div>
-
-          <div class="logs" id="logs">
-            <div class="logs-empty">No logs yet.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ TAB 2: SETTINGS ============ -->
-      <section class="tab-panel" data-panel="settings">
-        <div class="card">
-          <h2 class="section-title">Connection</h2>
-
-          <div class="conn-status">
-            <span class="conn-dot" id="connDot"></span>
-            <div class="conn-info">
-              <div class="conn-primary" id="connPrimary">Not connected</div>
-              <div class="conn-secondary" id="connSecondary">Sign in to authorize Salesforce access</div>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="signInBtn">Sign in to Salesforce</button>
+              <button class="btn btn-secondary" id="testConnBtn" disabled>Test Connection</button>
+              <button class="btn btn-danger-ghost" id="resetBtn" disabled>Reset Connection</button>
             </div>
           </div>
 
-          <div class="btn-row">
-            <button class="btn btn-primary" id="signInBtn">Sign in to Salesforce</button>
-            <button class="btn btn-secondary" id="testConnBtn" disabled>Test Connection</button>
-            <button class="btn btn-danger-ghost" id="resetBtn" disabled>Reset Connection</button>
+          <!-- Configuration editor -->
+          <div class="card stretch">
+            <div class="config-header">
+              <h2 class="section-title">Job Configuration</h2>
+              <div class="btn-row config-actions">
+                <button class="btn btn-secondary" id="editConfigBtn">Edit</button>
+                <button class="btn btn-secondary" id="validateConfigBtn">Validate</button>
+                <button class="btn btn-primary" id="saveConfigBtn" disabled>Save</button>
+              </div>
+            </div>
+
+            <textarea id="configEditor" class="config-editor" spellcheck="false" readonly></textarea>
+
+            <div class="config-status" id="configStatus">Loading config…</div>
           </div>
-        </div>
+        </section>
 
-        <div class="card">
-          <h2 class="section-title">Job Configuration</h2>
-
-          <div class="config-summary">
-            <div class="config-row"><span>Config file:</span><code>student-update.json</code></div>
-            <div class="config-row"><span>Object:</span><code>Student__c</code></div>
-            <div class="config-row"><span>Max records:</span><code>15</code></div>
+        <!-- TAB 3: About -->
+        <section class="tab-panel" data-panel="about">
+          <div class="card">
+            <h2 class="section-title">About</h2>
+            <div class="config-row"><span>Application:</span><code>Architect Cadence</code></div>
+            <div class="config-row"><span>Version:</span><code>0.1.0</code></div>
+            <div class="config-row"><span>Description:</span><code>Auto-updates Architect Engagements in Salesforce</code></div>
           </div>
 
-          <div class="btn-row">
-            <button class="btn btn-secondary" id="editConfigBtn">Edit Config</button>
-            <button class="btn btn-secondary" id="validateConfigBtn">Validate</button>
+          <div class="card">
+            <h2 class="section-title">Files</h2>
+            <div class="config-row"><span>Config file:</span><code id="aboutConfigPath">…</code></div>
+            <div class="config-row"><span>Log file:</span><code id="aboutLogPath">…</code></div>
           </div>
-
-          <div class="config-status" id="configStatus">Config not yet validated</div>
-        </div>
-
-        <div class="card about">
-          <h2 class="section-title">About</h2>
-          <div class="config-row"><span>Version:</span><code>0.1.0</code></div>
-          <div class="config-row"><span>Status:</span><code>Module 1 — UI scaffold</code></div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       <div class="toast" id="toast"></div>
     </div>
