@@ -24,14 +24,19 @@ import { runJob, RunResult } from './job-runner';
 import { appendLog, getLogPath, LogEntry, LogWindow, readLogs } from './log-store';
 import { randomUUID } from 'crypto';
 import { validateConfig } from '../shared';
+import { loadPrefs, savePrefs, isValidTime } from './prefs-store';
+import { createScheduler, Scheduler } from './scheduler';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let scheduler: Scheduler | null = null;
 
+// UI state (distinct from the auth session; this is just scheduling/display).
+// Defaults here are overwritten from prefs.json in app.whenReady().
 const state = {
   isActive: true,
   isConnected: false,
-  scheduledTime: '15:22',
+  scheduledTime: '23:00',
   username: null as string | null,
   orgDomain: null as string | null,
 };
@@ -116,6 +121,8 @@ function updateTrayMenu(): void {
       label: state.isActive ? 'Disable Schedule' : 'Enable Schedule',
       click: () => {
         state.isActive = !state.isActive;
+        savePrefs({ isActive: state.isActive, scheduledTime: state.scheduledTime });
+        scheduler?.reconfigure({ scheduledTime: state.scheduledTime, active: state.isActive });
         updateTrayMenu();
         mainWindow?.webContents.send('state:changed', state);
       },
@@ -153,12 +160,22 @@ ipcMain.handle('state:get', () => state);
 
 ipcMain.handle('state:set-active', (_e, isActive: boolean) => {
   state.isActive = isActive;
+  savePrefs({ isActive: state.isActive, scheduledTime: state.scheduledTime });
+  scheduler?.reconfigure({ scheduledTime: state.scheduledTime, active: state.isActive });
   updateTrayMenu();
   return state;
 });
 
 ipcMain.handle('state:set-time', (_e, time: string) => {
+  console.log(`[ipc] state:set-time received: '${time}'`);
+  if (!isValidTime(time)) {
+    console.warn(`[ipc] state:set-time REJECTED — invalid format: '${time}'`);
+    return state;
+  }
   state.scheduledTime = time;
+  savePrefs({ isActive: state.isActive, scheduledTime: state.scheduledTime });
+  console.log(`[ipc] Prefs saved: time=${time}, active=${state.isActive}`);
+  scheduler?.reconfigure({ scheduledTime: state.scheduledTime, active: state.isActive });
   return state;
 });
 
@@ -319,6 +336,17 @@ ipcMain.handle('logs:get', (_e, window: LogWindow) => {
 // ============ Lifecycle ============
 
 app.whenReady().then(() => {
+  // Load user prefs (Active toggle + scheduled time) before the window opens
+  // so the UI paints the correct state immediately.
+  try {
+    const prefs = loadPrefs();
+    state.isActive = prefs.isActive;
+    state.scheduledTime = prefs.scheduledTime;
+    console.log(`[prefs] Loaded: active=${state.isActive}, time=${state.scheduledTime}`);
+  } catch (err) {
+    console.error(`[prefs] Could not load: ${(err as Error).message}`);
+  }
+
   // Create sample config on very first run so there's something to sign in against.
   try {
     if (scaffoldSampleConfigIfMissing()) {
@@ -337,6 +365,20 @@ app.whenReady().then(() => {
     console.error(`[oauth] Could not restore session: ${(err as Error).message}`);
   }
 
+  // Start the scheduler. onTick runs the same job pipeline as Run Now.
+  scheduler = createScheduler({
+    scheduledTime: state.scheduledTime,
+    active: state.isActive,
+    onTick: async () => {
+      console.log(`[scheduler] Tick at ${new Date().toISOString()}`);
+      const result = await executeJob();
+      recordRun(result);
+    },
+  });
+  console.log(
+    `[scheduler] Configured for ${state.scheduledTime} local time (${state.isActive ? 'enabled' : 'paused'})`
+  );
+
   createWindow();
   createTray();
 
@@ -347,4 +389,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { /* tray app — don't quit */ });
-app.on('before-quit', () => { (app as any).isQuitting = true; });
+app.on('before-quit', () => {
+  (app as any).isQuitting = true;
+  scheduler?.stop();
+});
