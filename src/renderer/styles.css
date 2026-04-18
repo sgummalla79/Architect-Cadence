@@ -76,23 +76,20 @@ body {
 
 .app-icon {
   width: 44px; height: 44px;
-  background: var(--accent);
-  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
   flex-shrink: 0;
-  transition: background 0.2s;
+  transition: opacity 0.2s;
 }
 
-.app-icon svg { width: 24px; height: 24px; }
-
-.app-icon.inactive {
-  background: transparent;
-  border: 2px solid var(--text-dim);
-  color: var(--text-dim);
+.app-icon img {
+  width: 44px;
+  height: 44px;
+  display: block;
 }
+
+.app-icon.inactive { opacity: 0.4; }
 
 .app-meta { flex: 1; min-width: 0; }
 .app-meta h1 {
@@ -429,6 +426,79 @@ body {
 .conn-info { flex: 1; }
 .conn-primary { font-weight: 600; margin-bottom: 2px; }
 .conn-secondary { font-size: 12px; color: var(--text-muted); }
+
+/* ===== Settings row (Startup card) ===== */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.setting-info { flex: 1; min-width: 0; }
+
+.setting-label {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.setting-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Toggle switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.switch-slider::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.switch input:checked + .switch-slider {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch input:checked + .switch-slider::before {
+  left: 22px;
+  background: white;
+}
+
+.switch input:disabled + .switch-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* ===== Config editor ===== */
 .config-header {

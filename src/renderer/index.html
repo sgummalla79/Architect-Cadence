@@ -12,9 +12,7 @@
       <div class="chrome">
         <header class="app-header">
           <div class="app-icon" id="appIcon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="5 12 10 17 19 7"></polyline>
-            </svg>
+            <img src="assets/icon.svg" alt="Architect Cadence" width="44" height="44" draggable="false" />
           </div>
           <div class="app-meta">
             <h1>Architect Cadence</h1>
@@ -89,6 +87,23 @@
               <button class="btn btn-primary" id="signInBtn">Sign in to Salesforce</button>
               <button class="btn btn-secondary" id="testConnBtn" disabled>Test Connection</button>
               <button class="btn btn-danger-ghost" id="resetBtn" disabled>Reset Connection</button>
+            </div>
+          </div>
+
+          <!-- Startup -->
+          <div class="card">
+            <h2 class="section-title">Startup</h2>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Launch at startup</div>
+                <div class="setting-desc" id="startupDesc">
+                  Open Architect Cadence automatically when you log in. Starts hidden in the tray.
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="launchAtStartupToggle" />
+                <span class="switch-slider"></span>
+              </label>
             </div>
           </div>
 

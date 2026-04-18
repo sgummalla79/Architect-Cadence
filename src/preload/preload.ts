@@ -5,6 +5,8 @@ const api = {
   getState: () => ipcRenderer.invoke('state:get'),
   setActive: (isActive: boolean) => ipcRenderer.invoke('state:set-active', isActive),
   setTime: (time: string) => ipcRenderer.invoke('state:set-time', time),
+  setLaunchAtStartup: (enabled: boolean) =>
+    ipcRenderer.invoke('state:set-launch-at-startup', enabled),
 
   // Actions
   runNow: () => ipcRenderer.invoke('action:run-now'),

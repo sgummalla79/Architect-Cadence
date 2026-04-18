@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="44" height="44">
+  <title>Architect Cadence</title>
+  <!-- Cloud body -->
+  <path d="M 12 42 C 0 42 0 26 12 26 C 12 14 26 12 33 19 C 42 12 54 14 54 26 C 60 26 60 42 54 42 Z"
+        fill="#4a9eff"/>
+  <!-- Clock badge — solid dark disc with the cloud's accent ring -->
+  <circle cx="48" cy="46" r="11" fill="#0f1419" stroke="#4a9eff" stroke-width="2"/>
+  <!-- Clock hands: 12 + 3 -->
+  <line x1="48" y1="46" x2="48" y2="40" stroke="#4a9eff" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="48" y1="46" x2="54" y2="46" stroke="#4a9eff" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- Center pin -->
+  <circle cx="48" cy="46" r="1.2" fill="#4a9eff"/>
+</svg>

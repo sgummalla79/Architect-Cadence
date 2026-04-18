@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Architect Cadence</title>
+  <!-- Rounded square tile background. macOS auto-applies its own rounded mask
+       on top, but having our own corners means the icon also looks intentional
+       in places (Windows, Linux, dock previews) that don't apply a mask. -->
+  <rect width="1024" height="1024" rx="200" fill="#0f1419"/>
+
+  <!-- Cloud + clock composition centered. Original 64-unit icon scaled 12×
+       and translated to center it in the 1024 tile (with some breathing room). -->
+  <g transform="translate(128 128) scale(12)">
+    <!-- Cloud body -->
+    <path d="M 12 42 C 0 42 0 26 12 26 C 12 14 26 12 33 19 C 42 12 54 14 54 26 C 60 26 60 42 54 42 Z"
+          fill="#4a9eff"/>
+    <!-- Clock badge -->
+    <circle cx="48" cy="46" r="11" fill="#0f1419" stroke="#4a9eff" stroke-width="2"/>
+    <line x1="48" y1="46" x2="48" y2="40" stroke="#4a9eff" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="48" y1="46" x2="54" y2="46" stroke="#4a9eff" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="48" cy="46" r="1.2" fill="#4a9eff"/>
+  </g>
+</svg>

@@ -17,6 +17,8 @@ export interface Prefs {
   isActive: boolean;
   /** Time of day for the scheduled run, "HH:MM" 24-hour, local time. Default: "23:00". */
   scheduledTime: string;
+  /** Whether the app should launch automatically when the OS starts. Default: false. */
+  launchAtStartup: boolean;
 }
 
 const PREFS_FILENAME = 'prefs.json';
@@ -24,10 +26,16 @@ const PREFS_FILENAME = 'prefs.json';
 const DEFAULTS: Prefs = {
   isActive: true,
   scheduledTime: '23:00',
+  launchAtStartup: false,
 };
 
 function getPrefsPath(): string {
   return path.join(app.getPath('userData'), PREFS_FILENAME);
+}
+
+/** True if the prefs file does not yet exist on disk — i.e. first-ever launch. */
+export function isFirstLaunch(): boolean {
+  return !fs.existsSync(getPrefsPath());
 }
 
 /** Load prefs from disk, falling back to defaults for missing/invalid values. */
@@ -53,6 +61,7 @@ export function loadPrefs(): Prefs {
   return {
     isActive: typeof obj.isActive === 'boolean' ? obj.isActive : DEFAULTS.isActive,
     scheduledTime: isValidTime(obj.scheduledTime) ? obj.scheduledTime! : DEFAULTS.scheduledTime,
+    launchAtStartup: typeof obj.launchAtStartup === 'boolean' ? obj.launchAtStartup : DEFAULTS.launchAtStartup,
   };
 }
 

@@ -2,31 +2,31 @@
 
 Scheduled Salesforce data updates — desktop app for macOS and Windows.
 
-A small tray app that runs a configurable SOQL-based update job against a Salesforce org on a daily schedule. Built to do one thing well: scoped, guardrailed, auditable record updates.
+A small menu-bar app that runs a configurable SOQL-based update job against a Salesforce org on a daily schedule. Built to do one thing well: scoped, guardrailed, auditable record updates.
 
 ## Status
 
-Modules 1–5 complete. The app installs, signs in to a real Salesforce org via OAuth PKCE, runs the configured job on demand, and persists logs across restarts. Daily scheduling, OS notifications, launch-on-boot, and packaging come in Modules 6–9.
+Modules 1–8 complete. The app installs, signs in to a real Salesforce org via OAuth PKCE, runs the configured job on demand or on a daily schedule, persists logs across restarts, notifies via OS notifications, and can launch at system startup.
 
 ```
 ✅ Module 1: UI scaffold (Electron + TypeScript)
-✅ Module 2: SOQL builder + config validator (91 tests)
-✅ Module 3: OAuth PKCE + keychain-backed token storage (27 tests)
-✅ Module 4: Job runner with guardrail (21 tests)
-✅ Module 5: Persistent logs with retention + windowed views (17 tests)
-🚧 Module 6: Scheduler + Active toggle persistence
-⏳ Module 7: OS notifications
-⏳ Module 8: Launch on boot, real tray icon
+✅ Module 2: SOQL builder + config validator
+✅ Module 3: OAuth PKCE + keychain-backed token storage
+✅ Module 4: Job runner with guardrail
+✅ Module 5: Persistent logs with retention + windowed views
+✅ Module 6: Scheduler + Active toggle persistence
+✅ Module 7: OS notifications
+✅ Module 8: Launch on boot + proper tray + dock icons
 ⏳ Module 9: Code-signed installers (.dmg, .exe)
 ```
 
-**159/159 tests passing.** **0 npm vulnerabilities.**
+**192/192 tests passing.** **0 npm vulnerabilities.**
 
 ## Quick start
 
 ```bash
 npm install
-npm test       # 159 passed
+npm test       # 192 passed
 npm start      # opens the app
 ```
 
@@ -46,7 +46,28 @@ On first launch, a sample config is created at `~/Library/Application Support/ar
    - **If the result count exceeds `maxRecords`, the update is skipped** and the run is logged as an error
    - Otherwise PATCH /composite/sobjects to update matched records
 
-4. **Inspect history** — Execution History dropdown shows last run / 3 / 7 / 15 / 30 days. Each entry shows duration; click the disclosure button to view the record IDs that were touched. Logs survive restarts.
+4. **Schedule daily** — Schedule tab → set the time picker. The scheduler fires at that local time every day. Toggle Active off to pause without losing config. Both the time and Active state persist across restarts.
+
+5. **Launch at startup** — Settings tab → Startup → toggle on. The app will launch with your OS login, stay hidden in the menu bar, and fire at its scheduled time without you opening it.
+
+6. **Get notified** — Scheduled runs fire an OS notification on success or failure (but not when the app is set Inactive). Click the notification to jump straight to the app.
+
+7. **Inspect history** — Execution History dropdown shows last run / 3 / 7 / 15 / 30 days. Each entry shows duration; click the disclosure button to view the record IDs that were touched. Logs survive restarts.
+
+## Window & dock behavior (macOS)
+
+The app is tray-first:
+
+| Action | Window | Dock icon |
+|---|---|---|
+| First-ever launch | Shown | Visible |
+| Normal launch (double-click) | Shown | Visible |
+| OS auto-launched at login | Hidden | Hidden |
+| Close window (red button) | Hidden | **Hidden** |
+| Click tray icon | — | — |
+| Tray menu → Show Window | Shown | Visible |
+
+The tray icon is always visible while the app is running, regardless of window state. When the window is hidden the app has **no dock presence at all** — like 1Password, Rectangle, iStat Menus. Closing the window doesn't quit the app; quit only from the tray menu.
 
 ## Configuration
 
@@ -75,8 +96,6 @@ Example `job-config.json`:
   "maxRecords": 15
 }
 ```
-
-**Field reference:**
 
 | Field | Purpose |
 |---|---|
@@ -112,7 +131,7 @@ npm run test:run -- --update
 npm run test:run -- --config ./test-config.json --update
 ```
 
-`test:run` defaults to dry-run on purpose — you'd have to opt in to writing.
+`test:run` defaults to dry-run on purpose — you have to opt in to writing.
 
 ## Project structure
 
@@ -120,7 +139,7 @@ npm run test:run -- --config ./test-config.json --update
 architect-cadence/
 ├── src/
 │   ├── main/
-│   │   ├── index.ts                 # Window, tray, IPC handlers
+│   │   ├── index.ts                 # Window, tray, IPC, dock, lifecycle
 │   │   ├── oauth.ts                 # Pure OAuth helpers (PKCE, URL build, callback parse)
 │   │   ├── oauth-flow.ts            # Loopback server + token exchange
 │   │   ├── token-store.ts           # safeStorage wrapper for refresh token
@@ -130,21 +149,30 @@ architect-cadence/
 │   │   ├── job-config.ts            # Read / validate / save config file
 │   │   ├── log-store.ts             # File I/O for JSONL logs
 │   │   ├── log-store-core.ts        # Pure log helpers (no Electron, testable)
+│   │   ├── scheduler.ts             # node-cron wrapper with reconfigure/stop
+│   │   ├── prefs-store.ts           # Persistent user preferences
+│   │   ├── prefs-validators.ts      # Pure validators (time format)
+│   │   ├── notifications.ts         # OS notifications for scheduled runs
+│   │   ├── startup.ts               # Launch-at-startup + autolaunch detection
 │   │   └── __tests__/
 │   ├── preload/
 │   │   └── preload.ts               # Safe IPC bridge to renderer
 │   ├── renderer/
 │   │   ├── index.html               # Tabbed UI (Schedule / Settings / About)
 │   │   ├── styles.css
-│   │   └── app.ts                   # UI state + handlers
+│   │   ├── app.ts                   # UI state + handlers
+│   │   └── assets/
+│   │       └── icon.svg             # Header icon (cloud + clock badge)
 │   └── shared/
 │       ├── types.ts                 # JobConfig schema types
 │       ├── logic-parser.ts          # Logic expression parser (recursive descent)
 │       ├── soql-builder.ts          # AST + conditions → SOQL string
 │       ├── config.ts                # Validator
 │       └── __tests__/
+├── build/
+│   └── icons/                       # App + tray icon assets (PNG + SVG sources)
 ├── scripts/
-│   ├── copy-assets.js               # Build helper (HTML/CSS into dist)
+│   ├── copy-assets.js               # Build helper (HTML/CSS/icons into dist)
 │   ├── test-oauth.ts                # Standalone OAuth verification
 │   └── test-run.ts                  # Standalone job-runner verification
 ├── package.json
@@ -152,17 +180,19 @@ architect-cadence/
 └── vitest.config.ts
 ```
 
-## Security notes
+## Security
 
-- **Refresh token** is encrypted at rest via `safeStorage`. Never written in plaintext.
-- **Access token** is held only in the main process memory. Never persisted, never sent to the renderer, never logged.
-- **All sign-in** uses OAuth PKCE; no client secrets are embedded in the binary.
-- **All API calls** are HTTPS to Salesforce; the only inbound port we open is `localhost:1717` during the brief OAuth callback window, then closed.
+- **Refresh token** encrypted at rest via `safeStorage`. Never written in plaintext.
+- **Access token** held only in the main process memory. Never persisted, never sent to the renderer, never logged.
+- **OAuth** uses PKCE; no client secrets embedded in the binary.
+- **HTTPS** for all Salesforce API calls. The only inbound port ever opened is `localhost:1717` during the brief OAuth callback window, then closed.
 - **Token-shaped strings** are scrubbed from any error message that could reach logs or UI.
 - **Owner filter** is always AND-appended to the WHERE clause — the job can only modify records owned by the authenticated user.
 - **Guardrail** prevents accidental mass-updates if a filter is too broad.
 
 ## Where the app stores data
+
+Paths shown for macOS — Windows uses `%APPDATA%\architect-cadence\`, Linux uses `~/.config/architect-cadence/`.
 
 | File | What | Encrypted? |
 |---|---|---|
@@ -170,14 +200,7 @@ architect-cadence/
 | `~/Library/Application Support/architect-cadence/session.json` | Username, instance URL, user ID, org ID | No (no secrets) |
 | `~/Library/Application Support/architect-cadence/session.enc` | Refresh token | Yes (`safeStorage`) |
 | `~/Library/Application Support/architect-cadence/logs.jsonl` | Run history (30-day retention) | No |
-
-(Paths shown for macOS — Windows uses `%APPDATA%\architect-cadence\`, Linux uses `~/.config/architect-cadence/`.)
-
-## Window behavior
-
-- Fixed size 720×760 (not resizable, not maximizable, not full-screen-able)
-- Tray-first: closing the window hides it; quit only via tray menu → Quit
-- On macOS, the green maximize button is disabled
+| `~/Library/Application Support/architect-cadence/prefs.json` | Active toggle, scheduled time, launch-at-startup | No |
 
 ## Keeping dependencies current
 
@@ -192,13 +215,11 @@ Should always report **0 vulnerabilities** on a fresh install.
 ## Stack
 
 - **Electron 41** + **TypeScript 5** (main process + preload)
+- **node-cron 4** for scheduling
 - **Vanilla HTML/CSS/TS** for the renderer (no React; the UI is small enough)
-- **Vitest 4** for tests (159 tests across pure helpers and main-process modules)
+- **Vitest 4** for tests (192 tests across pure helpers and main-process modules)
 - **Native `fetch`** for Salesforce API calls (no `jsforce` — saves ~400KB of dependencies for a 2-call surface)
 
 ## What's coming
 
-- **Module 6** — node-cron scheduler, persisted Active toggle and run time
-- **Module 7** — Native OS notifications on success/failure
-- **Module 8** — Real tray icon, launch on system boot via `app.setLoginItemSettings()`
 - **Module 9** — `electron-builder` packaging (.dmg, .exe), code signing, optional auto-updater

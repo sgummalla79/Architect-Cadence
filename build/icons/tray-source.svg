@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Architect Cadence — tray</title>
+  <!-- Single-color silhouette in black so macOS Template logic can invert it.
+       Cloud has a circular hole carved out for the clock badge; the clock dial
+       and hands are drawn in solid black on top of (around) that hole. -->
+  <defs>
+    <mask id="cutout">
+      <rect width="64" height="64" fill="white"/>
+      <!-- carve the clock badge area out of the cloud -->
+      <circle cx="48" cy="46" r="13" fill="black"/>
+    </mask>
+  </defs>
+  <!-- Cloud body with the badge area carved out -->
+  <path d="M 12 42 C 0 42 0 26 12 26 C 12 14 26 12 33 19 C 42 12 54 14 54 26 C 60 26 60 42 54 42 Z"
+        fill="black" mask="url(#cutout)"/>
+  <!-- Clock ring -->
+  <circle cx="48" cy="46" r="9" fill="none" stroke="black" stroke-width="2.5"/>
+  <!-- Clock hands -->
+  <line x1="48" y1="46" x2="48" y2="40" stroke="black" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="48" y1="46" x2="53" y2="46" stroke="black" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

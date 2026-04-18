@@ -10,6 +10,8 @@
     scheduledTime: string;
     username: string | null;
     orgDomain: string | null;
+    launchAtStartup: boolean;
+    startupSupported: boolean;
   }
 
   interface ActionResult {
@@ -32,6 +34,7 @@
     getState: () => Promise<AppState>;
     setActive: (isActive: boolean) => Promise<AppState>;
     setTime: (time: string) => Promise<AppState>;
+    setLaunchAtStartup: (enabled: boolean) => Promise<AppState>;
     runNow: () => Promise<ActionResult>;
     signIn: () => Promise<{ ok: boolean; state: AppState; message?: string }>;
     resetConnection: () => Promise<{ ok: boolean; state: AppState }>;
@@ -145,6 +148,18 @@
       signInBtn.textContent = 'Sign in to Salesforce';
       testConnBtn.disabled = true;
       resetBtn.disabled = true;
+    }
+
+    // Launch-at-startup toggle
+    const startupToggle = $('launchAtStartupToggle') as HTMLInputElement;
+    const startupDesc = $('startupDesc');
+    startupToggle.checked = state.launchAtStartup;
+    startupToggle.disabled = !state.startupSupported;
+    if (!state.startupSupported) {
+      startupDesc.textContent = 'Launch at startup is not supported on this platform.';
+    } else {
+      startupDesc.textContent =
+        'Open Architect Cadence automatically when you log in. Starts hidden in the tray.';
     }
   }
 
@@ -374,6 +389,16 @@
   $('logRange').addEventListener('change', async (e) => {
     currentWindow = (e.target as HTMLSelectElement).value as LogWindowKey;
     await refreshLogsFromMain();
+  });
+
+  $('launchAtStartupToggle').addEventListener('change', async (e) => {
+    const enabled = (e.target as HTMLInputElement).checked;
+    const updated = await cadence.setLaunchAtStartup(enabled);
+    render(updated);
+    showToast(
+      enabled ? 'Will launch at startup' : 'Launch at startup disabled',
+      enabled ? 'success' : 'info'
+    );
   });
 
   // ============ Subscriptions ============
