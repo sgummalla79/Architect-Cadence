@@ -1,91 +1,184 @@
 # Architect Cadence
 
-Scheduled Salesforce data updates — desktop app for macOS and Windows.
+A small menu-bar app that runs scheduled Salesforce data updates — configurable SOQL queries with safety guardrails, daily cadence, auditable logs, OS notifications.
 
-A small menu-bar app that runs a configurable SOQL-based update job against a Salesforce org on a daily schedule. Built to do one thing well: scoped, guardrailed, auditable record updates.
+Desktop app for **macOS** and **Windows**. Built on Electron + TypeScript.
 
-## Status
+---
 
-Modules 1–8 complete. The app installs, signs in to a real Salesforce org via OAuth PKCE, runs the configured job on demand or on a daily schedule, persists logs across restarts, notifies via OS notifications, and can launch at system startup.
+## What it does
 
-```
-✅ Module 1: UI scaffold (Electron + TypeScript)
-✅ Module 2: SOQL builder + config validator
-✅ Module 3: OAuth PKCE + keychain-backed token storage
-✅ Module 4: Job runner with guardrail
-✅ Module 5: Persistent logs with retention + windowed views
-✅ Module 6: Scheduler + Active toggle persistence
-✅ Module 7: OS notifications
-✅ Module 8: Launch on boot + proper tray + dock icons
-⏳ Module 9: Code-signed installers (.dmg, .exe)
-```
+1. Sign in to a Salesforce org via browser-based OAuth (no client secrets in the binary).
+2. Configure a query + update rule in JSON (sObject, filters with nested AND/OR logic, fields to update, a guardrail `maxRecords` ceiling).
+3. Run it on demand, or schedule it to fire daily at a specific time.
+4. Get notified on macOS/Windows when scheduled runs succeed or fail.
+5. Browse execution history (last run / 3 / 7 / 15 / 30 days) with record IDs for every run.
 
-**192/192 tests passing.** **0 npm vulnerabilities.**
+The app lives in your menu bar/system tray. Close the window, it keeps running. Quit only via the tray menu.
 
-## Quick start
+---
+
+## Running from source
+
+If you just want to use the app on your own machine and don't need a signed installer, this is the simplest path.
+
+### Prerequisites
+
+- **Node.js 20+** and **npm 10+**
+- **Git**
+- **macOS** or **Windows** (Linux works for dev, but launch-at-startup is a no-op there)
+
+### Install + run
 
 ```bash
+git clone <your-repo-url> architect-cadence
+cd architect-cadence
 npm install
-npm test       # 192 passed
-npm start      # opens the app
+npm test         # should say 192 passed
+npm start        # opens the app
 ```
 
-For DevTools on launch: `npm run dev`.
+First launch creates a sample config at:
+- **macOS:** `~/Library/Application Support/architect-cadence/job-config.json`
+- **Windows:** `%APPDATA%\architect-cadence\job-config.json`
 
-On first launch, a sample config is created at `~/Library/Application Support/architect-cadence/job-config.json` (or the OS equivalent). Edit it via Settings → Job Configuration in the app.
+Edit it via **Settings → Job Configuration** in the app (no need to touch the file directly).
 
-## How it works
+### Development mode
 
-1. **Sign in** — Settings tab → "Sign in to Salesforce" opens a system-browser OAuth flow (PKCE, no secrets in the binary). Refresh token is encrypted via Electron `safeStorage` (macOS Keychain / Windows DPAPI) and persisted across restarts. Access tokens live only in memory.
+```bash
+npm run dev     # opens with DevTools already attached
+```
 
-2. **Configure the job** — Settings tab → Job Configuration. The full JSON config is editable in-app with Edit / Validate / Save. Save validates first, refuses invalid input, and auto-formats with 2-space indentation.
+### Useful scripts
 
-3. **Run on demand** — Schedule tab → Run Now. The runner:
-   - Builds SOQL from the config (filters + nested logic + auto-appended owner filter)
-   - Queries with `LIMIT maxRecords + 1` as the guardrail check
-   - **If the result count exceeds `maxRecords`, the update is skipped** and the run is logged as an error
-   - Otherwise PATCH /composite/sobjects to update matched records
+```bash
+npm test                  # 192 unit tests
+npm run test:watch        # vitest watch mode
+npm run test:oauth        # standalone OAuth flow verification (interactive, no writes)
+npm run test:run          # dry-run the job against your org (SELECT only)
+npm run test:run -- --update    # actually execute the UPDATE
+```
 
-4. **Schedule daily** — Schedule tab → set the time picker. The scheduler fires at that local time every day. Toggle Active off to pause without losing config. Both the time and Active state persist across restarts.
+Both `test:oauth` and `test:run` open a browser for sign-in each time (they can't decrypt the Electron app's stored refresh token, by design). For casual verification, both scripts use a config at the same path as the app.
 
-5. **Launch at startup** — Settings tab → Startup → toggle on. The app will launch with your OS login, stay hidden in the menu bar, and fire at its scheduled time without you opening it.
+---
 
-6. **Get notified** — Scheduled runs fire an OS notification on success or failure (but not when the app is set Inactive). Click the notification to jump straight to the app.
+## Building a distributable installer
 
-7. **Inspect history** — Execution History dropdown shows last run / 3 / 7 / 15 / 30 days. Each entry shows duration; click the disclosure button to view the record IDs that were touched. Logs survive restarts.
+If you want to ship a `.dmg` / `.exe` to yourself or others, this is the path.
 
-## Window & dock behavior (macOS)
+### Build a macOS `.dmg`
 
-The app is tray-first:
+On a Mac:
 
-| Action | Window | Dock icon |
-|---|---|---|
-| First-ever launch | Shown | Visible |
-| Normal launch (double-click) | Shown | Visible |
-| OS auto-launched at login | Hidden | Hidden |
-| Close window (red button) | Hidden | **Hidden** |
-| Click tray icon | — | — |
-| Tray menu → Show Window | Shown | Visible |
+```bash
+cd architect-cadence
+npm install
+npm run dist:mac
+```
 
-The tray icon is always visible while the app is running, regardless of window state. When the window is hidden the app has **no dock presence at all** — like 1Password, Rectangle, iStat Menus. Closing the window doesn't quit the app; quit only from the tray menu.
+Output: `dist-installers/Architect Cadence-0.1.0-universal.dmg`
 
-## Configuration
+The `.dmg` is a universal binary — runs on both Intel and Apple Silicon Macs. To install:
+
+1. Double-click the `.dmg`
+2. Drag **Architect Cadence.app** to the **Applications** folder
+3. Eject the disk image
+
+First launch from Applications:
+- macOS Gatekeeper will say "Architect Cadence cannot be opened because it is from an unidentified developer"
+- **Right-click the app → Open → Open** in the confirmation dialog
+- After that one-time bypass, macOS trusts it for all future launches on this machine
+
+Once signed (see "Code signing" below), the bypass won't be needed.
+
+### Build a Windows `.exe`
+
+On Windows:
+
+```bash
+cd architect-cadence
+npm install
+npm run dist:win
+```
+
+Output: `dist-installers\Architect Cadence-Setup-0.1.0.exe`
+
+The `.exe` is an NSIS installer. Double-click, follow the wizard, pick an install directory.
+
+SmartScreen may show an "unrecognized app" warning the first time. Click **More info → Run anyway**. Code signing eliminates this warning (see below).
+
+### Cross-platform notes
+
+- On a Mac, you can also build the Windows installer with `npm run dist:win`, but it requires `wine` to be installed (`brew install --cask wine-stable`). Easier path: build Mac installers on Mac, Windows installers on Windows.
+- On Windows, you **cannot** build a `.dmg` — macOS signing tools are macOS-only.
+
+### Output size
+
+- macOS universal DMG: ~200 MB (both architectures embedded)
+- Windows x64 EXE: ~90 MB
+
+If size matters, the build config supports `--x64` / `--arm64` instead of universal — halves the Mac output but requires two separate downloads.
+
+---
+
+## First-time setup in the app
+
+After install:
+
+1. **Connection tab** → "Sign in to Salesforce"  
+   Opens your default browser. Sign in, authorize the app. The app captures the token and encrypts the refresh token in your OS keychain.
+
+2. **Settings tab → Job Configuration** → "Edit"  
+   Adjust the sample config to match your org:
+   - `domain` — your My Domain (e.g. `acme.my.salesforce.com`)
+   - `object` — the sObject to query and update
+   - `filters` — conditions + a logic expression like `"1 AND (2 OR 3)"`
+   - `updateFields` — what to set on each matched record
+   - `maxRecords` — the safety ceiling; if a run matches more than this, it's skipped and logged as an error
+
+   Click **Validate** to check, then **Save** (auto-formats with 2-space indent).
+
+3. **Schedule tab**  
+   Set the daily run time (24-hour picker). Toggle Active on. The job will fire at that local time every day.
+
+4. **Run Now** (first time)  
+   Click once to verify end-to-end. Check the Execution History — you should see a success entry with record IDs.
+
+5. **Optional: Settings → Startup → Launch at startup**  
+   Turn on to have the app auto-launch when you log in. It boots to the tray silently, no window shown.
+
+---
+
+## How runs are scoped (important)
+
+For safety, **every query is automatically constrained to records owned by the authenticated user**:
+
+```
+WHERE (your filters) AND OwnerId = '<authenticated-user-id>'
+```
+
+This is appended by the runner regardless of what your `filters.logic` says. You cannot configure the app to touch records owned by other users — even if you try. This is a deliberate defense against misconfigured filters.
+
+The `maxRecords` guardrail is the other half: if the SELECT returns more than `maxRecords`, the UPDATE is skipped and the run is logged as an error. No records are modified.
+
+---
+
+## Configuration reference
 
 Example `job-config.json`:
 
 ```json
 {
-  "domain": "exp-cloud.my.salesforce.com",
+  "domain": "acme.my.salesforce.com",
   "apiVersion": "v66.0",
   "logLevel": "info",
   "object": "Student__c",
   "filters": {
     "conditions": [
       { "field": "Final_Result__c", "operator": "=",  "value": "Withdrawn" },
-      { "field": "Id",              "operator": "IN", "value": [
-        "a0uKd00000L6xfQIAR",
-        "a0uKd00000L6xfRIAR"
-      ]}
+      { "field": "Id",              "operator": "IN", "value": ["a0uKd00000L6xfQIAR"] }
     ],
     "logic": "1 AND 2"
   },
@@ -99,127 +192,107 @@ Example `job-config.json`:
 
 | Field | Purpose |
 |---|---|
-| `domain` | Salesforce My Domain (used for OAuth login URL) |
+| `domain` | Your Salesforce My Domain |
 | `apiVersion` | REST API version, e.g. `v66.0` |
-| `object` | sObject API name to query and update |
+| `object` | sObject API name |
 | `filters.conditions` | Array of `{field, operator, value}` |
 | `filters.logic` | Expression like `1 AND (2 OR 3)` referencing 1-indexed conditions |
-| `ownerFieldName` | Field always constrained to the authenticated user's ID (safety) |
+| `ownerFieldName` | Field always constrained to the signed-in user's ID |
 | `updateFields` | Fields to set on every matched record |
-| `maxRecords` | Guardrail: if SOQL matches more than this, the update is **skipped** and an error is logged |
-| `logLevel` | Optional: `debug` / `info` / `warn` / `error` |
+| `maxRecords` | Guardrail — runs exceeding this are skipped |
+| `logLevel` | `debug` / `info` / `warn` / `error` (optional) |
 
-**Supported operators:** `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`.
+Supported operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`.
 
-**Owner filter:** the runner always appends `AND <ownerFieldName> = '<currentUserId>'` to the WHERE clause regardless of what `logic` says. This means the scheduled job can only ever touch records owned by the signed-in user — defense-in-depth against misconfigured filters.
+---
 
-## Standalone test scripts
+## Where data lives
 
-Two scripts let you verify pieces of the system outside Electron:
-
-```bash
-# Test OAuth flow against your real org (interactive, no writes)
-npm run test:oauth
-
-# Dry-run the full job (SELECT only, no writes)
-npm run test:run
-
-# Actually execute the UPDATE
-npm run test:run -- --update
-
-# Use a separate config (recommended for first real --update)
-npm run test:run -- --config ./test-config.json --update
-```
-
-`test:run` defaults to dry-run on purpose — you have to opt in to writing.
-
-## Project structure
-
-```
-architect-cadence/
-├── src/
-│   ├── main/
-│   │   ├── index.ts                 # Window, tray, IPC, dock, lifecycle
-│   │   ├── oauth.ts                 # Pure OAuth helpers (PKCE, URL build, callback parse)
-│   │   ├── oauth-flow.ts            # Loopback server + token exchange
-│   │   ├── token-store.ts           # safeStorage wrapper for refresh token
-│   │   ├── session.ts               # In-memory session + auto-refresh
-│   │   ├── salesforce-client.ts     # Native-fetch wrapper, 401 retry, token scrubbing
-│   │   ├── job-runner.ts            # SELECT + guardrail + UPDATE orchestration
-│   │   ├── job-config.ts            # Read / validate / save config file
-│   │   ├── log-store.ts             # File I/O for JSONL logs
-│   │   ├── log-store-core.ts        # Pure log helpers (no Electron, testable)
-│   │   ├── scheduler.ts             # node-cron wrapper with reconfigure/stop
-│   │   ├── prefs-store.ts           # Persistent user preferences
-│   │   ├── prefs-validators.ts      # Pure validators (time format)
-│   │   ├── notifications.ts         # OS notifications for scheduled runs
-│   │   ├── startup.ts               # Launch-at-startup + autolaunch detection
-│   │   └── __tests__/
-│   ├── preload/
-│   │   └── preload.ts               # Safe IPC bridge to renderer
-│   ├── renderer/
-│   │   ├── index.html               # Tabbed UI (Schedule / Settings / About)
-│   │   ├── styles.css
-│   │   ├── app.ts                   # UI state + handlers
-│   │   └── assets/
-│   │       └── icon.svg             # Header icon (cloud + clock badge)
-│   └── shared/
-│       ├── types.ts                 # JobConfig schema types
-│       ├── logic-parser.ts          # Logic expression parser (recursive descent)
-│       ├── soql-builder.ts          # AST + conditions → SOQL string
-│       ├── config.ts                # Validator
-│       └── __tests__/
-├── build/
-│   └── icons/                       # App + tray icon assets (PNG + SVG sources)
-├── scripts/
-│   ├── copy-assets.js               # Build helper (HTML/CSS/icons into dist)
-│   ├── test-oauth.ts                # Standalone OAuth verification
-│   └── test-run.ts                  # Standalone job-runner verification
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
-```
-
-## Security
-
-- **Refresh token** encrypted at rest via `safeStorage`. Never written in plaintext.
-- **Access token** held only in the main process memory. Never persisted, never sent to the renderer, never logged.
-- **OAuth** uses PKCE; no client secrets embedded in the binary.
-- **HTTPS** for all Salesforce API calls. The only inbound port ever opened is `localhost:1717` during the brief OAuth callback window, then closed.
-- **Token-shaped strings** are scrubbed from any error message that could reach logs or UI.
-- **Owner filter** is always AND-appended to the WHERE clause — the job can only modify records owned by the authenticated user.
-- **Guardrail** prevents accidental mass-updates if a filter is too broad.
-
-## Where the app stores data
-
-Paths shown for macOS — Windows uses `%APPDATA%\architect-cadence\`, Linux uses `~/.config/architect-cadence/`.
+Paths shown for macOS — Windows uses `%APPDATA%\architect-cadence\`.
 
 | File | What | Encrypted? |
 |---|---|---|
-| `~/Library/Application Support/architect-cadence/job-config.json` | Job configuration | No (no secrets) |
-| `~/Library/Application Support/architect-cadence/session.json` | Username, instance URL, user ID, org ID | No (no secrets) |
-| `~/Library/Application Support/architect-cadence/session.enc` | Refresh token | Yes (`safeStorage`) |
-| `~/Library/Application Support/architect-cadence/logs.jsonl` | Run history (30-day retention) | No |
-| `~/Library/Application Support/architect-cadence/prefs.json` | Active toggle, scheduled time, launch-at-startup | No |
+| `job-config.json` | Job configuration | No |
+| `session.json` | Username, instance URL, user ID, org ID | No |
+| `session.enc` | Refresh token | Yes (OS keychain) |
+| `logs.jsonl` | Run history, 30-day retention | No |
+| `prefs.json` | Active toggle, scheduled time, launch-at-startup | No |
 
-## Keeping dependencies current
+Access tokens are never written to disk — they live in memory only, never cross to the renderer process, and are scrubbed from any error message that might end up in logs.
 
-Pinned to `electron@^41` (current stable). When Electron 42 lands, bump the version explicitly rather than running `npm audit fix --force`.
+---
+
+## Code signing (optional but recommended for distribution)
+
+Unsigned installers work fine for personal use but trigger OS warnings on other machines. Signing eliminates those warnings.
+
+### macOS (Apple Developer ID)
+
+Costs $99/year via Apple. Once you have a Developer ID certificate:
 
 ```bash
-npm audit
+export CSC_LINK=/path/to/DeveloperID.p12
+export CSC_KEY_PASSWORD=your-p12-password
+
+# For notarization (required for macOS 10.15+):
+export APPLE_ID=your@apple.id
+export APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
+export APPLE_TEAM_ID=XXXXXXXXXX
+
+npm run dist:mac
 ```
 
-Should always report **0 vulnerabilities** on a fresh install.
+The build will sign, notarize, and staple automatically. Users get no Gatekeeper warnings.
 
-## Stack
+### Windows (Authenticode)
 
-- **Electron 41** + **TypeScript 5** (main process + preload)
+Get an OV or EV code signing certificate from a CA (DigiCert, Sectigo, etc.):
+
+```bash
+export CSC_LINK=/path/to/cert.pfx
+export CSC_KEY_PASSWORD=your-pfx-password
+
+npm run dist:win
+```
+
+EV certificates provide immediate SmartScreen reputation. OV certificates need to build reputation over time (more downloads = less warnings).
+
+Without signing, the installer still works — users just get a "from an unknown publisher" prompt.
+
+---
+
+## Troubleshooting
+
+**"Run Now" is greyed out**  
+You're not signed in. Connection tab → Sign in to Salesforce.
+
+**Scheduler isn't firing**  
+Check the terminal output when you run `npm start` — you should see `[scheduler] Installed cron '...'`. If the time picker changes aren't logged at `[ipc] state:set-time received: ...`, the IPC bridge isn't wired — try a full `rm -rf dist && npm start`.
+
+**`npm test` failures after `npm install`**  
+Run `npm run clean && npm install`. This rebuilds native deps against the current Electron version.
+
+**First run on macOS says "cannot be opened"**  
+Right-click the app in Applications → Open → Open. One-time bypass, persists after that.
+
+**Where are my logs?**  
+About tab shows the path to `logs.jsonl`. You can open it in any text editor — one JSON object per line, newest at the bottom. Entries older than 30 days get pruned automatically.
+
+**Window won't come back after closing**  
+By design — close hides to tray. Click the tray icon → "Show Window".
+
+---
+
+## Tech stack
+
+- **Electron 41** + **TypeScript 5**
 - **node-cron 4** for scheduling
-- **Vanilla HTML/CSS/TS** for the renderer (no React; the UI is small enough)
-- **Vitest 4** for tests (192 tests across pure helpers and main-process modules)
-- **Native `fetch`** for Salesforce API calls (no `jsforce` — saves ~400KB of dependencies for a 2-call surface)
+- **Vitest 4** for tests (192 passing, 0 vulnerabilities)
+- Vanilla HTML/CSS for the renderer (no React)
+- Native `fetch` for Salesforce API calls
 
-## What's coming
+---
 
-- **Module 9** — `electron-builder` packaging (.dmg, .exe), code signing, optional auto-updater
+## License
+
+MIT
