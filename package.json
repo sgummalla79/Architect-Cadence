@@ -1,7 +1,13 @@
 {
   "name": "architect-cadence",
+  "productName": "Architect Cadence",
   "version": "0.1.0",
   "description": "Scheduled Salesforce data updates",
+  "author": {
+    "name": "Architect Cadence",
+    "email": "noreply@architect-cadence.local"
+  },
+  "license": "MIT",
   "main": "dist/main/index.js",
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -12,14 +18,18 @@
     "test:watch": "vitest",
     "test:oauth": "tsx scripts/test-oauth.ts",
     "test:run": "tsx scripts/test-run.ts",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist dist-installers",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
   },
-  "author": "",
-  "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/node-cron": "^3.0.11",
     "electron": "^41.0.0",
+    "electron-builder": "^26.8.1",
     "rimraf": "^5.0.5",
     "tsx": "^4.19.2",
     "typescript": "^5.3.3",
@@ -27,5 +37,74 @@
   },
   "dependencies": {
     "node-cron": "^4.2.1"
+  },
+  "build": {
+    "appId": "com.architectcadence.app",
+    "productName": "Architect Cadence",
+    "copyright": "Copyright © 2026 Architect Cadence",
+    "directories": {
+      "output": "dist-installers",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/__tests__/**",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icons",
+        "to": "icons",
+        "filter": ["**/*.png"]
+      }
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        }
+      ],
+      "icon": "build/icons/app-icon-1024.png",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSHighResolutionCapable": true
+      }
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "contents": [
+        { "x": 140, "y": 200, "type": "file" },
+        { "x": 400, "y": 200, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 540, "height": 380 }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icons/app-icon-256.png",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Architect Cadence"
+    }
   }
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for all Electron apps with hardened runtime.
+         Allows JIT compilation and unsigned executable memory,
+         which Node and V8 need. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Loads dylibs/frameworks that are part of Electron.
+         Required for Electron's embedded Node modules. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Outbound network for Salesforce REST calls. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Inbound network for the OAuth loopback server on localhost:1717. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+</dict>
+</plist>
