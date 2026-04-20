@@ -21,7 +21,7 @@ import {
 } from './session';
 import { createSalesforceClient } from './salesforce-client';
 import { runJob, RunResult } from './job-runner';
-import { appendLog, getLogPath, LogEntry, LogWindow, readLogs } from './log-store';
+import { appendLog, clearLogs, getLogPath, LogEntry, LogWindow, readLogs } from './log-store';
 import { randomUUID } from 'crypto';
 import { validateConfig } from '../shared';
 import { isFirstLaunch, loadPrefs, savePrefs, isValidTime } from './prefs-store';
@@ -458,6 +458,15 @@ ipcMain.handle('logs:get', (_e, window: LogWindow) => {
     return { ok: true, entries: readLogs(window) };
   } catch (err) {
     return { ok: false, entries: [] as LogEntry[], message: (err as Error).message };
+  }
+});
+
+ipcMain.handle('logs:clear', () => {
+  try {
+    clearLogs();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
   }
 });
 

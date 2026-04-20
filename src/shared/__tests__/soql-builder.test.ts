@@ -263,6 +263,13 @@ describe('buildSoql — structure', () => {
     );
   });
 
+  test('throws if ownerFieldName is empty', () => {
+    const config = makeConfig({ ownerFieldName: '' } as any);
+    expect(() => buildSoql(config, { currentUserId: '005abc' })).toThrow(
+      /ownerFieldName is required/
+    );
+  });
+
   test('throws if logic references out-of-range condition', () => {
     const config = makeConfig({
       filters: {

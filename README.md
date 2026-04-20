@@ -275,6 +275,12 @@ Run `npm run clean && npm install`. This rebuilds native deps against the curren
 **First run on macOS says "cannot be opened"**  
 Right-click the app in Applications → Open → Open. One-time bypass, persists after that.
 
+**macOS asks "Do you want to allow Architect Cadence to use the keychain?"**  
+This is expected — click **Always Allow**. The app uses Electron's `safeStorage` API to encrypt your Salesforce refresh token before writing it to disk (`session.enc`). The encryption is backed by the macOS Keychain, which is why macOS prompts for permission the first time (and again after a rebuild or rename). The token is never stored in plain text. Access tokens are not persisted at all — they live in memory only.
+
+On **Windows**, the same encryption is handled transparently by DPAPI — no prompt appears.  
+On **Linux**, `safeStorage` requires a running keyring daemon (`gnome-keyring` or `kwallet`). If none is available, the app will throw `"Secure storage is not available on this system"` and you will need to install and unlock a keyring before signing in.
+
 **Where are my logs?**  
 About tab shows the path to `logs.jsonl`. You can open it in any text editor — one JSON object per line, newest at the bottom. Entries older than 30 days get pruned automatically.
 

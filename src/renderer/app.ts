@@ -43,6 +43,7 @@
     configValidate: (text: string) => Promise<{ ok: boolean; message?: string; errors?: string[] }>;
     configSave: (text: string) => Promise<{ ok: boolean; message?: string; formatted?: string; errors?: string[] }>;
     getLogs: (window: LogWindowKey) => Promise<{ ok: boolean; entries: LogEntry[]; message?: string }>;
+    clearLogs: () => Promise<{ ok: boolean; message?: string }>;
     getPaths: () => Promise<{ configPath: string; logPath: string }>;
     onStateChanged: (cb: (state: AppState) => void) => void;
     onTrayRunNow: (cb: () => void) => void;
@@ -389,6 +390,16 @@
   $('logRange').addEventListener('change', async (e) => {
     currentWindow = (e.target as HTMLSelectElement).value as LogWindowKey;
     await refreshLogsFromMain();
+  });
+
+  $('clearLogs').addEventListener('click', async () => {
+    if (!confirm('Clear all execution history? This cannot be undone.')) return;
+    const result = await cadence.clearLogs();
+    if (result.ok) {
+      allLogs = [];
+      renderLogs();
+      showToast('Execution history cleared', 'info');
+    }
   });
 
   $('launchAtStartupToggle').addEventListener('change', async (e) => {

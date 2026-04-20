@@ -40,6 +40,14 @@ export function countLogs(): number {
   return readAndPruneAll().length;
 }
 
+/** Delete all log entries from disk. */
+export function clearLogs(): void {
+  const p = getLogPath();
+  if (fs.existsSync(p)) {
+    fs.writeFileSync(p, '', 'utf8');
+  }
+}
+
 // ============ Internal: read + prune in one pass ============
 
 function readAndPruneAll(): LogEntry[] {

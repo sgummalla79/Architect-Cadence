@@ -55,13 +55,16 @@
 
             <div class="row logs-header">
               <label class="row-label">EXECUTION HISTORY</label>
-              <select id="logRange" class="log-range">
-                <option value="last-run">Last run</option>
-                <option value="3d" selected>Last 3 days</option>
-                <option value="7d">Last 7 days</option>
-                <option value="15d">Last 15 days</option>
-                <option value="30d">Last 30 days</option>
-              </select>
+              <div class="logs-header-controls">
+                <select id="logRange" class="log-range">
+                  <option value="last-run">Last run</option>
+                  <option value="3d" selected>Last 3 days</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="15d">Last 15 days</option>
+                  <option value="30d">Last 30 days</option>
+                </select>
+                <button id="clearLogs" class="btn btn-danger-ghost btn-sm">Clear</button>
+              </div>
             </div>
 
             <div class="logs" id="logs">

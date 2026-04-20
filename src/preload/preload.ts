@@ -22,6 +22,7 @@ const api = {
   // Logs
   getLogs: (window: 'last-run' | '3d' | '7d' | '15d' | '30d') =>
     ipcRenderer.invoke('logs:get', window),
+  clearLogs: () => ipcRenderer.invoke('logs:clear'),
 
   // Paths (About tab)
   getPaths: () => ipcRenderer.invoke('paths:get'),

@@ -160,6 +160,10 @@ export function buildSoql(config: JobConfig, options: BuildSoqlOptions): BuiltSo
     throw new Error('currentUserId is required to build the SOQL query.');
   }
 
+  if (!config.ownerFieldName) {
+    throw new Error('ownerFieldName is required in config — SOQL will not run without it.');
+  }
+
   const ast = parseLogic(config.filters.logic);
 
   // Sanity check: logic expression should only reference valid condition indices.
