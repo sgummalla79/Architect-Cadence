@@ -29,6 +29,14 @@ import { createScheduler, Scheduler } from './scheduler';
 import { notifyScheduledRun } from './notifications';
 import { getStartupStatus, isStartupSupported, setStartupEnabled, wasAutoLaunched } from './startup';
 
+// On Windows, setAppUserModelId must be called before app.whenReady() so the
+// OS associates the window and taskbar button with our app identity rather than
+// the generic Electron binary. Without this, the taskbar always shows the
+// Electron icon regardless of the BrowserWindow icon option.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.architectcadence.app');
+}
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let scheduler: Scheduler | null = null;
@@ -136,7 +144,9 @@ function createWindow(showOnReady: boolean): void {
     show: false, // always false initially — we show manually via the ready-to-show event
     frame: true,
     backgroundColor: '#0f1419',
-    icon: path.join(__dirname, '../icons/app-icon-256.png'),
+    icon: process.platform === 'win32'
+      ? path.join(__dirname, '../icons/app-icon.ico')
+      : path.join(__dirname, '../icons/app-icon-256.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -211,7 +221,7 @@ function createTray(): void {
 function updateTrayMenu(): void {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
-    { label: 'Show Window', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+    { label: 'Open', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
     {
       label: 'Run Now',
       enabled: state.isConnected,
