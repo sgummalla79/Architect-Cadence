@@ -876,6 +876,8 @@ body {
   background: var(--bg);
   overflow-y: auto;
   max-height: 260px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .log-entry {

@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc && npm run copy-assets",
     "copy-assets": "node scripts/copy-assets.js",
-    "start": "npm run build && electron .",
+    "start": "npm run build && electron . --env=dev",
+    "start:prod": "npm run build && electron . --env=prod",
     "dev": "npm run build && electron . --dev",
     "test": "vitest run",
     "test:watch": "vitest",

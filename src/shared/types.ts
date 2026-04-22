@@ -99,7 +99,7 @@ export interface EngagementsViewConfig {
   callDurations?: string[];
   /** Maps card UI slots to Salesforce field API names. All fields default if omitted. */
   cardDisplay?: CardDisplayConfig;
-  /** Action executed when the External Call button is clicked on an engagement card. */
+  /** Action executed when the Customer Call button is clicked on an engagement card. */
   customerCallAction?: CallAction;
   /** Action executed when the Internal Call button is clicked on an engagement card. */
   internalCallAction?: CallAction;

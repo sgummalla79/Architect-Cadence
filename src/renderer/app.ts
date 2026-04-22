@@ -186,7 +186,7 @@
       ? `<button class="eng-end-call-btn" data-record-id="${id}">End Call</button>`
       : `<select class="eng-duration" title="Call duration">${durationOpts}</select>` +
         `<button class="eng-call-btn eng-call-internal" data-record-id="${id}" data-action="internal">${ICON_INTERNAL} Internal Call</button>` +
-        `<button class="eng-call-btn eng-call-external" data-record-id="${id}" data-action="customer">${ICON_EXTERNAL} External Call</button>`;
+        `<button class="eng-call-btn eng-call-external" data-record-id="${id}" data-action="customer">${ICON_EXTERNAL} Customer Call</button>`;
 
     const row3 =
       `<div class="eng-card-footer">` +

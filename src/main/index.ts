@@ -3,11 +3,10 @@ import * as path from 'path';
 import {
   getAppConfigPath,
   loadAppConfig,
-  migrateConfigFilename,
   readAppConfigRaw,
   resolveLoginUrl,
   saveAppConfigRaw,
-  scaffoldSampleConfigIfMissing,
+  writeConfigForEnv,
 } from './app-config';
 import { performOAuthFlow, DEFAULT_CLIENT_ID } from './oauth-flow';
 import {
@@ -459,8 +458,6 @@ ipcMain.handle('action:test-connection', async () => {
 // --- Config (in-app editor) ---
 
 ipcMain.handle('config:read', () => {
-  // Auto-scaffold so the editor is never empty on first launch.
-  scaffoldSampleConfigIfMissing();
   const text = readAppConfigRaw();
   return { ok: true, text };
 });
@@ -587,7 +584,7 @@ ipcMain.handle('engagements:call-action', async (_e, { recordId, actionType, dur
   const action = actionType === 'customer' ? ev?.customerCallAction : ev?.internalCallAction;
   if (!action) return { ok: false, error: `${actionType}CallAction not configured` };
 
-  const label = actionType === 'customer' ? 'External Call' : 'Internal Call';
+  const label = actionType === 'customer' ? 'Customer Call' : 'Internal Call';
   const runId = randomUUID();
   logEng('info', `${label} action on record ${recordId} (duration: ${duration})`, runId);
 
@@ -838,16 +835,14 @@ app.whenReady().then(() => {
     console.log(`[startup] Launch-at-startup not supported on ${process.platform}`);
   }
 
-  // Rename legacy job-config.json → app-config.json if needed.
-  migrateConfigFilename();
-
-  // Create sample config on very first run so there's something to sign in against.
+  // Write config for the environment specified via --env=dev|prod on the command line.
+  const envArg = process.argv.find(a => a.startsWith('--env='));
+  const env: 'dev' | 'prod' = app.isPackaged ? 'prod' : (envArg === '--env=prod' ? 'prod' : 'dev');
   try {
-    if (scaffoldSampleConfigIfMissing()) {
-      console.log(`[config] Created sample config at ${getAppConfigPath()}`);
-    }
+    writeConfigForEnv(env);
+    console.log(`[config] Wrote ${env} config to ${getAppConfigPath()}`);
   } catch (err) {
-    console.error(`[config] Could not scaffold sample: ${(err as Error).message}`);
+    console.error(`[config] Could not write config: ${(err as Error).message}`);
   }
 
   try {
