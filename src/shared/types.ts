@@ -37,11 +37,17 @@ export interface ScheduleConfig {
 }
 
 /** A single field assignment in a call action's createRecords spec.
- *  `value` may contain the literal placeholder `{recordId}` which is
- *  substituted at runtime with the engagement record's Salesforce Id. */
+ *  Use `value` for a direct value (supports placeholders: {recordId}, {currentUserId}, {currentDate}).
+ *  Use `soql` + `soqlResultField` to resolve the value via a SOQL query at runtime.
+ *  Exactly one of `value` or `soql` must be provided. */
 export interface ActionField {
   field: string;
-  value: string;
+  /** Direct value; may contain {recordId}, {currentUserId}, {currentDate}. */
+  value?: string;
+  /** SOQL query to execute; may contain {currentUserId}. First result row is used. */
+  soql?: string;
+  /** Field to read from the SOQL result row. Defaults to 'Id'. */
+  soqlResultField?: string;
 }
 
 export interface CreateRecordConfig {

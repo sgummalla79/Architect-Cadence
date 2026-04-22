@@ -368,13 +368,25 @@ function validateCreateRecords(
       if (!isObject(f)) { errors.push(`${fp} must be an object.`); return; }
       const fField = (f as Record<string, unknown>).field;
       const fValue = (f as Record<string, unknown>).value;
+      const fSoql  = (f as Record<string, unknown>).soql;
+      const fSoqlResultField = (f as Record<string, unknown>).soqlResultField;
       if (typeof fField !== 'string' || fField.trim().length === 0) {
         errors.push(`${fp}.field must be a non-empty string.`); return;
       }
-      if (typeof fValue !== 'string') {
-        errors.push(`${fp}.value must be a string.`); return;
+      if (fSoql !== undefined) {
+        if (typeof fSoql !== 'string' || fSoql.trim().length === 0) {
+          errors.push(`${fp}.soql must be a non-empty string.`); return;
+        }
+        if (fSoqlResultField !== undefined && typeof fSoqlResultField !== 'string') {
+          errors.push(`${fp}.soqlResultField must be a string.`); return;
+        }
+        parsedFields.push({ field: fField, soql: fSoql, soqlResultField: typeof fSoqlResultField === 'string' ? fSoqlResultField : 'Id' });
+      } else {
+        if (typeof fValue !== 'string') {
+          errors.push(`${fp}: either 'value' (string) or 'soql' (string) must be provided.`); return;
+        }
+        parsedFields.push({ field: fField, value: fValue });
       }
-      parsedFields.push({ field: fField, value: fValue });
     });
     result.push({ object: object.trim(), fields: parsedFields });
   });

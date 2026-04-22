@@ -46,7 +46,7 @@
     getLogs: (window: LogWindowKey) => Promise<{ ok: boolean; entries: LogEntry[]; message?: string }>;
     clearLogs: () => Promise<{ ok: boolean; message?: string }>;
     fetchEngagements: () => Promise<{ ok: boolean; records: Record<string, unknown>[]; callDurations?: string[]; cardDisplay?: { nameField?: string; titleField?: string; stageField?: string; statusField?: string }; error?: string }>;
-    callAction: (recordId: string, actionType: 'customer' | 'internal', duration: string) => Promise<{ ok: boolean; error?: string }>;
+    callAction: (recordId: string, actionType: 'customer' | 'internal', duration: string) => Promise<{ ok: boolean; error?: string; recordsCreationFailed?: boolean }>;
     endCall: (recordId: string) => Promise<{ ok: boolean; error?: string }>;
     clearStaleTimers: (scheduledIds: string[]) => Promise<{ ok: boolean }>;
     workingAction: (recordId: string, currentStatus: string) => Promise<{ ok: boolean; error?: string; newStatus?: string }>;
@@ -304,7 +304,11 @@
             const cardEl = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
             if (cardEl) cardEl.outerHTML = buildCardHtml(engagementRecords[idx]);
           }
-          showToast(`Call scheduled — auto-ends in ${duration}`, 'success');
+          if (r.recordsCreationFailed) {
+            showToast('Call scheduled — Records Creation Failed (see Logs)', 'error');
+          } else {
+            showToast(`Call scheduled — auto-ends in ${duration}`, 'success');
+          }
         } else {
           btn.disabled = false;
           btn.innerHTML = origHtml;

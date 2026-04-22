@@ -608,22 +608,48 @@ ipcMain.handle('engagements:call-action', async (_e, { recordId, actionType, dur
     await client.updateRecords(config.object, [updatePayload as { Id: string; [k: string]: unknown }]);
     logEng('success', `${config.object} ${recordId} updated successfully.`, runId);
 
-    // Step 2: create each child record substituting supported placeholders (only if configured)
-    // Supported placeholders: {recordId}, {currentUserId}, {currentDate}
+    // Step 2: create each child record, resolving placeholders and SOQL lookups
     if (action.createRecords && action.createRecords.length > 0) {
       const currentDate = new Date().toISOString().split('T')[0];
+      let createFailed = false;
       for (const cr of action.createRecords) {
         const recFields: Record<string, unknown> = {};
         for (const f of cr.fields) {
-          let val: unknown = f.value;
-          if (val === '{recordId}')      val = recordId;
-          else if (val === '{currentUserId}') val = meta.userId;
-          else if (val === '{currentDate}')   val = currentDate;
-          recFields[f.field] = val;
+          if (f.soql) {
+            const resolvedSoql = f.soql.replace('{currentUserId}', meta.userId);
+            try {
+              const result = await client.query<{ Id: string; [k: string]: unknown }>(resolvedSoql);
+              const row = result.records[0];
+              recFields[f.field] = row ? row[f.soqlResultField ?? 'Id'] : null;
+            } catch (lookupErr) {
+              const lookupMsg = lookupErr instanceof SalesforceApiError
+                ? `[${lookupErr.errorCode}] ${lookupErr.message}`
+                : scrubTokens((lookupErr as Error).message ?? 'Unknown error');
+              logEng('error', `SOQL lookup for ${f.field} failed: ${lookupMsg}`, runId);
+              recFields[f.field] = null;
+            }
+          } else {
+            let val: unknown = f.value ?? '';
+            if (val === '{recordId}')           val = recordId;
+            else if (val === '{currentUserId}') val = meta.userId;
+            else if (val === '{currentDate}')   val = currentDate;
+            recFields[f.field] = val;
+          }
         }
         logEng('info', `Creating ${cr.object} record for engagement ${recordId}.`, runId);
-        await client.createRecord(cr.object, recFields);
-        logEng('success', `${cr.object} record created.`, runId);
+        try {
+          await client.createRecord(cr.object, recFields);
+          logEng('success', `${cr.object} record created.`, runId);
+        } catch (createErr) {
+          const createMsg = createErr instanceof SalesforceApiError
+            ? `[${createErr.errorCode}] ${createErr.message}`
+            : scrubTokens((createErr as Error).message ?? 'Unknown error');
+          logEng('error', `Failed to create ${cr.object}: ${createMsg}`, runId);
+          createFailed = true;
+        }
+      }
+      if (createFailed) {
+        return { ok: true, recordsCreationFailed: true };
       }
     }
 
