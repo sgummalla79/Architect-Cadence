@@ -395,14 +395,11 @@
     runNowBtn.disabled = !state.isConnected;
     runNowBtn.title = state.isConnected ? '' : 'Sign in first';
 
-    // Launch-at-startup toggle in header
+    // Launch-at-startup pill in header
     const startupBtn = $('startupToggle');
+    startupBtn.hidden = !state.startupSupported;
     if (state.startupSupported) {
-      startupBtn.hidden = false;
-      startupBtn.classList.toggle('active', state.launchAtStartup);
-      startupBtn.title = state.launchAtStartup ? 'Launch at startup: On' : 'Launch at startup: Off';
-    } else {
-      startupBtn.hidden = true;
+      startupBtn.classList.toggle('inactive', !state.launchAtStartup);
     }
   }
 
