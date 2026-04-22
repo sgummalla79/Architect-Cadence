@@ -186,6 +186,38 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
     }
   }
 
+  // v7 → v8: inject AssignedTo__c and StartDate placeholders into call action createRecords if missing.
+  {
+    const rawEv = obj['engagementsView'];
+    if (typeof rawEv === 'object' && rawEv !== null && !Array.isArray(rawEv)) {
+      const ev = rawEv as Record<string, unknown>;
+      for (const actionKey of ['customerCallAction', 'internalCallAction'] as const) {
+        const rawAction = ev[actionKey];
+        if (typeof rawAction !== 'object' || rawAction === null || Array.isArray(rawAction)) continue;
+        const action = rawAction as Record<string, unknown>;
+        const rawCr = action['createRecords'];
+        if (!Array.isArray(rawCr) || rawCr.length === 0) continue;
+        for (const cr of rawCr) {
+          if (typeof cr !== 'object' || cr === null || Array.isArray(cr)) continue;
+          const rec = cr as Record<string, unknown>;
+          const fields = rec['fields'];
+          if (!Array.isArray(fields)) continue;
+          // rename StartDate → StartDate__c if the wrong name was written by a previous migration
+          for (const f of fields) {
+            if (typeof f === 'object' && f !== null && (f as Record<string, unknown>)['field'] === 'StartDate') {
+              (f as Record<string, unknown>)['field'] = 'StartDate__c';
+              migrated = true;
+            }
+          }
+          const hasAssigned = fields.some((f: unknown) => typeof f === 'object' && f !== null && (f as Record<string, unknown>)['field'] === 'AssignedTo__c');
+          const hasStartDate = fields.some((f: unknown) => typeof f === 'object' && f !== null && (f as Record<string, unknown>)['field'] === 'StartDate__c');
+          if (!hasAssigned) { fields.push({ field: 'AssignedTo__c', value: '{currentUserId}' }); migrated = true; }
+          if (!hasStartDate) { fields.push({ field: 'StartDate__c',  value: '{currentDate}'  }); migrated = true; }
+        }
+      }
+    }
+  }
+
   return { migrated, config: obj };
 }
 
@@ -286,11 +318,13 @@ const SAMPLE_CONFIG: JobConfig = {
         {
           object: 'Activity__c',
           fields: [
-            { field: 'Name',          value: 'Customer Call' },
-            { field: 'Priority__c',   value: 'High' },
-            { field: 'Type__c',       value: 'External Meeting' },
-            { field: 'Notes__c',      value: 'Please update notes on this record after customer call is completed' },
-            { field: 'Engagement__c', value: '{recordId}' },
+            { field: 'Name',           value: 'Customer Call' },
+            { field: 'Priority__c',    value: 'High' },
+            { field: 'Type__c',        value: 'External Meeting' },
+            { field: 'Notes__c',       value: 'Please update notes on this record after customer call is completed' },
+            { field: 'Engagement__c',  value: '{recordId}' },
+            { field: 'AssignedTo__c',  value: '{currentUserId}' },
+            { field: 'StartDate__c',    value: '{currentDate}' },
           ],
         },
       ],
@@ -303,11 +337,13 @@ const SAMPLE_CONFIG: JobConfig = {
         {
           object: 'Activity__c',
           fields: [
-            { field: 'Name',          value: 'Internal Call with CSM/Product' },
-            { field: 'Priority__c',   value: 'Medium' },
-            { field: 'Type__c',       value: 'Internal Meeting' },
-            { field: 'Notes__c',      value: 'Please update notes on this record after internal call is completed' },
-            { field: 'Engagement__c', value: '{recordId}' },
+            { field: 'Name',           value: 'Internal Call with CSM/Product' },
+            { field: 'Priority__c',    value: 'Medium' },
+            { field: 'Type__c',        value: 'Internal Meeting' },
+            { field: 'Notes__c',       value: 'Please update notes on this record after internal call is completed' },
+            { field: 'Engagement__c',  value: '{recordId}' },
+            { field: 'AssignedTo__c',  value: '{currentUserId}' },
+            { field: 'StartDate__c',    value: '{currentDate}' },
           ],
         },
       ],
