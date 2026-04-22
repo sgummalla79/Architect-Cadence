@@ -66,6 +66,31 @@
   const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T;
 
+  // ============ Theme ============
+
+  const THEME_KEY = 'companion-theme';
+  type Theme = 'dark' | 'light';
+
+  function applyTheme(theme: Theme): void {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_KEY, theme);
+  }
+
+  (function initTheme(): void {
+    const saved = localStorage.getItem(THEME_KEY) as Theme | null;
+    if (saved === 'light' || saved === 'dark') {
+      applyTheme(saved);
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(prefersDark ? 'dark' : 'light');
+    }
+  })();
+
+  $('themeToggle').addEventListener('click', () => {
+    const current = (document.documentElement.dataset.theme as Theme | undefined) ?? 'dark';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+
   function showToast(message: string, kind: 'success' | 'error' | 'info' = 'info'): void {
     const toast = $('toast');
     toast.textContent = message;

@@ -1,7 +1,7 @@
 {
   "name": "architect-companion",
   "productName": "Architect Companion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scheduled Salesforce data updates",
   "author": {
     "name": "Architect Companion",
