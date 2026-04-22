@@ -606,15 +606,17 @@ ipcMain.handle('engagements:call-action', async (_e, { recordId, actionType, dur
     await client.updateRecords(config.object, [updatePayload as { Id: string; [k: string]: unknown }]);
     logEng('success', `${config.object} ${recordId} updated successfully.`, runId);
 
-    // Step 2: create each child record, substituting {recordId}
-    for (const cr of action.createRecords) {
-      const recFields: Record<string, unknown> = {};
-      for (const f of cr.fields) {
-        recFields[f.field] = f.value === '{recordId}' ? recordId : f.value;
+    // Step 2: create each child record, substituting {recordId} (only if configured)
+    if (action.createRecords && action.createRecords.length > 0) {
+      for (const cr of action.createRecords) {
+        const recFields: Record<string, unknown> = {};
+        for (const f of cr.fields) {
+          recFields[f.field] = f.value === '{recordId}' ? recordId : f.value;
+        }
+        logEng('info', `Creating ${cr.object} record for engagement ${recordId}.`, runId);
+        await client.createRecord(cr.object, recFields);
+        logEng('success', `${cr.object} record created.`, runId);
       }
-      logEng('info', `Creating ${cr.object} record for engagement ${recordId}.`, runId);
-      await client.createRecord(cr.object, recFields);
-      logEng('success', `${cr.object} record created.`, runId);
     }
 
     // Step 3: start auto-revert timer

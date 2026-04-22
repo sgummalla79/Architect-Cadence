@@ -304,10 +304,19 @@ function validateCallAction(
   );
 
   const rawCreate = (input as Record<string, unknown>).createRecords;
-  const createRecords = validateCreateRecords(rawCreate, key, errors);
+  let createRecords: CreateRecordConfig[] | null | undefined;
+  if (rawCreate !== undefined) {
+    if (!Array.isArray(rawCreate)) {
+      errors.push(`'${key}.createRecords' must be an array.`);
+    } else if (rawCreate.length > 0) {
+      createRecords = validateCreateRecords(rawCreate, key, errors);
+    }
+  }
 
   if (errors.length > 0) return null;
-  return { updateFields: updateFields!, createRecords: createRecords! };
+  const result: CallAction = { updateFields: updateFields! };
+  if (createRecords && createRecords.length > 0) result.createRecords = createRecords;
+  return result;
 }
 
 function validateCallActionUpdateFields(
@@ -337,14 +346,10 @@ function validateCallActionUpdateFields(
 }
 
 function validateCreateRecords(
-  input: unknown,
+  input: unknown[],
   key: string,
   errors: string[]
 ): CreateRecordConfig[] | null {
-  if (!Array.isArray(input) || input.length === 0) {
-    errors.push(`'${key}.createRecords' must be a non-empty array.`);
-    return null;
-  }
   const result: CreateRecordConfig[] = [];
   input.forEach((item, i) => {
     const prefix = `${key}.createRecords[${i}]`;

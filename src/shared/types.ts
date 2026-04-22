@@ -57,12 +57,12 @@ export interface SimpleAction {
 /** @deprecated use SimpleAction */
 export type EndCallAction = SimpleAction;
 
-/** Config for one call-button action: patch the engagement + create child records. */
+/** Config for one call-button action: patch the engagement + optionally create child records. */
 export interface CallAction {
   /** Fields to update on the Engagement record itself. */
   updateFields: UpdateField[];
-  /** Child records to create (e.g. Activity__c). */
-  createRecords: CreateRecordConfig[];
+  /** Child records to create (e.g. Activity__c). Omit or leave empty to skip record creation. */
+  createRecords?: CreateRecordConfig[];
 }
 
 /** Query config for the Engagements view tab. */
