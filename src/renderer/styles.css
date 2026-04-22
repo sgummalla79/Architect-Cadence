@@ -1165,6 +1165,36 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
+/* ===== Startup toggle button ===== */
+.startup-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+.startup-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.08);
+}
+.startup-toggle.active {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(63, 185, 80, 0.08);
+}
+html[data-theme="light"] .startup-toggle.active {
+  background: rgba(26, 127, 55, 0.08);
+}
+
 /* ===== Theme toggle button ===== */
 .theme-toggle {
   display: inline-flex;

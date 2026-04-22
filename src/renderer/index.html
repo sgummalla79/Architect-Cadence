@@ -35,6 +35,12 @@
                 <path d="M13.5 10A6 6 0 1 1 6 2.5a4.5 4.5 0 0 0 7.5 7.5z"/>
               </svg>
             </button>
+            <button class="startup-toggle" id="startupToggle" title="Launch at startup">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+                <path d="M8 1C5 1 2.5 4 2.5 7.5c0 2 .8 3.7 2 4.8V14h7v-1.7c1.2-1.1 2-2.8 2-4.8C13.5 4 11 1 8 1z"/>
+                <line x1="5.5" y1="14" x2="10.5" y2="14"/>
+              </svg>
+            </button>
             <button class="pill" id="activeToggle">
               <span class="pill-dot"></span>
               <span class="pill-label">Active</span>
@@ -45,7 +51,6 @@
         <nav class="tabs">
           <button class="tab active" data-tab="engagements">Engagements</button>
           <button class="tab" data-tab="logs">Logs</button>
-          <button class="tab" data-tab="settings">Settings</button>
           <button class="tab" data-tab="about">About</button>
         </nav>
       </div>
@@ -97,42 +102,6 @@
             <div class="logs" id="logs">
               <div class="logs-empty">No logs yet.</div>
             </div>
-          </div>
-        </section>
-
-        <!-- TAB 3: Settings -->
-        <section class="tab-panel" data-panel="settings">
-          <!-- Startup -->
-          <div class="card">
-            <h2 class="section-title">Startup</h2>
-            <div class="setting-row">
-              <div class="setting-info">
-                <div class="setting-label">Launch at startup</div>
-                <div class="setting-desc" id="startupDesc">
-                  Open Architect Companion automatically when you log in. Starts hidden in the tray.
-                </div>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="launchAtStartupToggle" />
-                <span class="switch-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Configuration editor -->
-          <div class="card stretch">
-            <div class="config-header">
-              <h2 class="section-title">Job Configuration</h2>
-              <div class="btn-row config-actions">
-                <button class="btn btn-secondary" id="editConfigBtn">Edit</button>
-                <button class="btn btn-secondary" id="validateConfigBtn">Validate</button>
-                <button class="btn btn-primary" id="saveConfigBtn" disabled>Save</button>
-              </div>
-            </div>
-
-            <textarea id="configEditor" class="config-editor" spellcheck="false" readonly></textarea>
-
-            <div class="config-status" id="configStatus">Loading config…</div>
           </div>
         </section>
 

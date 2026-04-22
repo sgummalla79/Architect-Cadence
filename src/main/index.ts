@@ -144,6 +144,7 @@ function createWindow(showOnReady: boolean): void {
     fullscreenable: false,
     show: false, // always false initially — we show manually via the ready-to-show event
     frame: true,
+    autoHideMenuBar: true,
     backgroundColor: '#0f1419',
     icon: process.platform === 'win32'
       ? path.join(__dirname, '../icons/app-icon.ico')
@@ -155,6 +156,7 @@ function createWindow(showOnReady: boolean): void {
     },
   });
 
+  if (process.platform === 'win32') Menu.setApplicationMenu(null);
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   // On macOS: keep the dock icon always visible. Close button closes the window

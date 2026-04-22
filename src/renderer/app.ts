@@ -395,16 +395,14 @@
     runNowBtn.disabled = !state.isConnected;
     runNowBtn.title = state.isConnected ? '' : 'Sign in first';
 
-    // Launch-at-startup toggle
-    const startupToggle = $('launchAtStartupToggle') as HTMLInputElement;
-    const startupDesc = $('startupDesc');
-    startupToggle.checked = state.launchAtStartup;
-    startupToggle.disabled = !state.startupSupported;
-    if (!state.startupSupported) {
-      startupDesc.textContent = 'Launch at startup is not supported on this platform.';
+    // Launch-at-startup toggle in header
+    const startupBtn = $('startupToggle');
+    if (state.startupSupported) {
+      startupBtn.hidden = false;
+      startupBtn.classList.toggle('active', state.launchAtStartup);
+      startupBtn.title = state.launchAtStartup ? 'Launch at startup: On' : 'Launch at startup: Off';
     } else {
-      startupDesc.textContent =
-        'Open Architect Companion automatically when you log in. Starts hidden in the tray.';
+      startupBtn.hidden = true;
     }
   }
 
@@ -504,59 +502,6 @@
     }
   }
 
-  // ============ Config editor ============
-
-  let savedConfigText = ''; // last persisted text — used to detect "dirty"
-  let isEditingConfig = false;
-
-  function setEditorMode(editing: boolean): void {
-    isEditingConfig = editing;
-    const editor = $('configEditor') as HTMLTextAreaElement;
-    const editBtn = $('editConfigBtn') as HTMLButtonElement;
-
-    editor.readOnly = !editing;
-    editBtn.textContent = editing ? 'Cancel' : 'Edit';
-    updateSaveButtonState();
-
-    if (editing) editor.focus();
-  }
-
-  function isDirty(): boolean {
-    if (!isEditingConfig) return false;
-    const editor = $('configEditor') as HTMLTextAreaElement;
-    return editor.value !== savedConfigText;
-  }
-
-  function updateSaveButtonState(): void {
-    const saveBtn = $('saveConfigBtn') as HTMLButtonElement;
-    saveBtn.disabled = !isDirty();
-
-    const status = $('configStatus');
-    if (isEditingConfig && isDirty()) {
-      status.textContent = 'Unsaved changes';
-      status.className = 'config-status dirty';
-    }
-  }
-
-  function setConfigStatus(text: string, kind: 'success' | 'error' | '' = ''): void {
-    const status = $('configStatus');
-    status.textContent = text;
-    status.className = `config-status${kind ? ' ' + kind : ''}`;
-  }
-
-  async function loadConfigEditor(): Promise<void> {
-    const result = await cadence.configRead();
-    if (result.ok) {
-      const editor = $('configEditor') as HTMLTextAreaElement;
-      editor.value = result.text;
-      savedConfigText = result.text;
-      setEditorMode(false);
-      setConfigStatus('Loaded from disk');
-    } else {
-      setConfigStatus('Could not read config', 'error');
-    }
-  }
-
   // ============ Button handlers ============
 
   $('activeToggle').addEventListener('click', async () => {
@@ -620,58 +565,13 @@
   });
 
 
-  // --- Config editor ---
-
-  $('editConfigBtn').addEventListener('click', () => {
-    if (isEditingConfig) {
-      // Currently editing → behave as Cancel.
-      if (isDirty()) {
-        if (!confirm('Discard unsaved changes?')) return;
-      }
-      const editor = $('configEditor') as HTMLTextAreaElement;
-      editor.value = savedConfigText;
-      setEditorMode(false);
-      setConfigStatus('Changes discarded');
-    } else {
-      setEditorMode(true);
-      setConfigStatus('Editing — make changes, then click Save');
-    }
-  });
-
-  $('validateConfigBtn').addEventListener('click', async () => {
-    const editor = $('configEditor') as HTMLTextAreaElement;
-    const r = await cadence.configValidate(editor.value);
-    if (r.ok) {
-      setConfigStatus(`✓ ${r.message ?? 'Config valid'}`, 'success');
-    } else {
-      const errs = r.errors ?? [r.message ?? 'Invalid'];
-      setConfigStatus(`✗ ${errs.join('\n  ')}`, 'error');
-    }
-  });
-
-  $('saveConfigBtn').addEventListener('click', async () => {
-    const editor = $('configEditor') as HTMLTextAreaElement;
-    const r = await cadence.configSave(editor.value);
-    if (r.ok) {
-      // Auto-format applied by main; reflect that in the editor.
-      if (r.formatted) {
-        editor.value = r.formatted;
-        savedConfigText = r.formatted;
-      } else {
-        savedConfigText = editor.value;
-      }
-      setEditorMode(false);
-      setConfigStatus('✓ Saved', 'success');
-      showToast('Config saved', 'success');
-    } else {
-      const errs = r.errors ?? [r.message ?? 'Save failed'];
-      setConfigStatus(`✗ Cannot save:\n  ${errs.join('\n  ')}`, 'error');
-      showToast('Config invalid — see details', 'error');
-    }
-  });
-
-  $('configEditor').addEventListener('input', () => {
-    if (isEditingConfig) updateSaveButtonState();
+  $('startupToggle').addEventListener('click', async () => {
+    const s = await cadence.getState();
+    if (!s.startupSupported) return;
+    const updated = await cadence.setLaunchAtStartup(!s.launchAtStartup);
+    render(updated);
+    showToast(updated.launchAtStartup ? 'Will launch at startup' : 'Launch at startup disabled',
+      updated.launchAtStartup ? 'success' : 'info');
   });
 
   $('logRange').addEventListener('change', async (e) => {
@@ -687,16 +587,6 @@
       renderLogs();
       showToast('Execution history cleared', 'info');
     }
-  });
-
-  $('launchAtStartupToggle').addEventListener('change', async (e) => {
-    const enabled = (e.target as HTMLInputElement).checked;
-    const updated = await cadence.setLaunchAtStartup(enabled);
-    render(updated);
-    showToast(
-      enabled ? 'Will launch at startup' : 'Launch at startup disabled',
-      enabled ? 'success' : 'info'
-    );
   });
 
   // ============ Subscriptions ============
@@ -734,7 +624,6 @@
   cadence.getState().then(render);
   void loadEngagements();
   void refreshLogsFromMain();
-  void loadConfigEditor();
   void cadence.getPaths().then((p) => {
     $('aboutConfigPath').textContent = p.configPath;
     $('aboutLogPath').textContent = p.logPath;
