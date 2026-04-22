@@ -169,8 +169,8 @@
     const workingBtn = isScheduled
       ? ''
       : (rawStatus === 'In Progress'
-          ? `<button class="eng-working-btn eng-working-btn--revert" data-record-id="${id}" data-action="working">Waiting on Customer</button>`
-          : `<button class="eng-working-btn" data-record-id="${id}" data-action="working">Working</button>`
+          ? `<button class="eng-working-btn eng-working-btn--revert" data-record-id="${id}" data-action="working">Set to Waiting on Customer</button>`
+          : `<button class="eng-working-btn" data-record-id="${id}" data-action="working">Set to Working</button>`
         );
 
     const durationOpts = callDurationOptions
