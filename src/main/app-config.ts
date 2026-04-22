@@ -218,6 +218,42 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
     }
   }
 
+  // v8 → v9: convert AssignedTo__c / cssf_Assigned_To__c from direct value to SOQL lookup.
+  {
+    const rawEv = obj['engagementsView'];
+    if (typeof rawEv === 'object' && rawEv !== null && !Array.isArray(rawEv)) {
+      const ev = rawEv as Record<string, unknown>;
+      for (const actionKey of ['customerCallAction', 'internalCallAction'] as const) {
+        const rawAction = ev[actionKey];
+        if (typeof rawAction !== 'object' || rawAction === null || Array.isArray(rawAction)) continue;
+        const action = rawAction as Record<string, unknown>;
+        const rawCr = action['createRecords'];
+        if (!Array.isArray(rawCr) || rawCr.length === 0) continue;
+        for (const cr of rawCr) {
+          if (typeof cr !== 'object' || cr === null || Array.isArray(cr)) continue;
+          const fields = (cr as Record<string, unknown>)['fields'];
+          if (!Array.isArray(fields)) continue;
+          for (const f of fields) {
+            if (typeof f !== 'object' || f === null) continue;
+            const fo = f as Record<string, unknown>;
+            if (fo['value'] !== '{currentUserId}') continue;
+            if (fo['field'] === 'AssignedTo__c') {
+              delete fo['value'];
+              fo['soql'] = "SELECT Id FROM User WHERE Id = '{currentUserId}'";
+              fo['soqlResultField'] = 'Id';
+              migrated = true;
+            } else if (fo['field'] === 'cssf_Assigned_To__c') {
+              delete fo['value'];
+              fo['soql'] = "SELECT Id FROM csc__Resource__c WHERE csc__Salesforce_User__c = '{currentUserId}'";
+              fo['soqlResultField'] = 'Id';
+              migrated = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return { migrated, config: obj };
 }
 
