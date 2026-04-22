@@ -316,32 +316,51 @@ body {
   border-left-color: var(--accent-hover);
 }
 
-/* ── Row 1: name + badge ── */
+/* ── Row 1: name + badges + open button (all left) ── */
 .eng-card-header {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
 }
 
 .eng-card-name {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 1;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+/* ── Row 2: title ── */
+.eng-card-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.eng-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 .eng-working-btn {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(63, 185, 80, 0.35);
-  background: rgba(63, 185, 80, 0.08);
+  padding: 4px 11px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(63, 185, 80, 0.45);
+  background: rgba(63, 185, 80, 0.12);
   color: var(--success);
   font-size: 11px;
   font-weight: 600;
@@ -352,18 +371,18 @@ body {
   transition: all 0.15s;
 }
 .eng-working-btn:hover {
-  background: rgba(63, 185, 80, 0.16);
+  background: rgba(63, 185, 80, 0.22);
   border-color: var(--success);
 }
 .eng-working-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .eng-working-btn--revert {
-  border-color: rgba(247, 168, 74, 0.35);
-  background: rgba(247, 168, 74, 0.08);
+  border-color: rgba(247, 168, 74, 0.45);
+  background: rgba(247, 168, 74, 0.12);
   color: var(--eng-external);
 }
 .eng-working-btn--revert:hover {
-  background: rgba(247, 168, 74, 0.18);
+  background: rgba(247, 168, 74, 0.24);
   border-color: var(--eng-external);
 }
 
@@ -390,14 +409,15 @@ body {
 
 
 .eng-card-title {
-  font-size: 13px;
-  color: var(--text-muted);
+  font-size: 12px;
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 1;
+  flex: 0 1 auto;
+  max-width: 38%;
   min-width: 0;
-  margin-left: auto;
+  text-align: right;
 }
 
 .eng-card-badge {
@@ -405,31 +425,47 @@ body {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: rgba(74, 158, 255, 0.12);
+  border: 1px solid rgba(74, 158, 255, 0.22);
   color: var(--accent);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* ── Row 2: status + actions ── */
+.eng-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(139, 189, 232, 0.10);
+  border: 1px solid rgba(139, 189, 232, 0.20);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.eng-status-badge--active {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.28);
+  color: var(--success);
+}
+.eng-status-badge--scheduled {
+  background: rgba(247, 168, 74, 0.12);
+  border-color: rgba(247, 168, 74, 0.28);
+  color: var(--eng-external);
+}
+
+/* ── Row 2: action buttons ── */
 .eng-card-footer {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.eng-card-status {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-style: italic;
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.eng-footer-spacer { flex: 1; }
 
 /* Call buttons */
 .eng-call-btn {
@@ -437,7 +473,7 @@ body {
   align-items: center;
   gap: 5px;
   padding: 5px 13px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1.5px solid transparent;
   font-size: 12.5px;
   font-weight: 600;
@@ -456,22 +492,22 @@ body {
 }
 
 .eng-call-internal {
-  background: var(--eng-internal-bg);
-  border-color: rgba(74, 158, 255, 0.30);
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.40);
   color: var(--eng-internal);
 }
 .eng-call-internal:hover {
-  background: rgba(74, 158, 255, 0.18);
+  background: rgba(74, 158, 255, 0.24);
   border-color: var(--eng-internal);
 }
 
 .eng-call-external {
-  background: var(--eng-external-bg);
-  border-color: rgba(247, 168, 74, 0.30);
+  background: rgba(247, 168, 74, 0.14);
+  border-color: rgba(247, 168, 74, 0.40);
   color: var(--eng-external);
 }
 .eng-call-external:hover {
-  background: rgba(247, 168, 74, 0.18);
+  background: rgba(247, 168, 74, 0.24);
   border-color: var(--eng-external);
 }
 
@@ -481,9 +517,9 @@ body {
   align-items: center;
   gap: 5px;
   padding: 5px 14px;
-  border-radius: 999px;
-  border: 1.5px solid rgba(248, 81, 73, 0.45);
-  background: rgba(248, 81, 73, 0.10);
+  border-radius: var(--radius-sm);
+  border: 1.5px solid rgba(248, 81, 73, 0.55);
+  background: rgba(248, 81, 73, 0.14);
   color: var(--danger-soft);
   font-size: 12.5px;
   font-weight: 600;
@@ -494,7 +530,7 @@ body {
   flex-shrink: 0;
 }
 .eng-end-call-btn:hover {
-  background: rgba(248, 81, 73, 0.20);
+  background: rgba(248, 81, 73, 0.26);
   border-color: var(--danger-soft);
 }
 .eng-end-call-btn:disabled {
@@ -1211,46 +1247,46 @@ html[data-theme="light"] .btn-refresh:hover {
 }
 
 html[data-theme="light"] .eng-call-internal {
-  background: var(--eng-internal-bg);
-  border-color: rgba(5, 80, 174, 0.25);
+  background: rgba(5, 80, 174, 0.10);
+  border-color: rgba(5, 80, 174, 0.38);
 }
 html[data-theme="light"] .eng-call-internal:hover {
-  background: rgba(5, 80, 174, 0.14);
+  background: rgba(5, 80, 174, 0.18);
   border-color: var(--eng-internal);
 }
 
 html[data-theme="light"] .eng-call-external {
-  background: var(--eng-external-bg);
-  border-color: rgba(149, 56, 0, 0.25);
+  background: rgba(149, 56, 0, 0.10);
+  border-color: rgba(149, 56, 0, 0.38);
 }
 html[data-theme="light"] .eng-call-external:hover {
-  background: rgba(149, 56, 0, 0.14);
+  background: rgba(149, 56, 0, 0.18);
   border-color: var(--eng-external);
 }
 
 html[data-theme="light"] .eng-end-call-btn {
-  border-color: rgba(207, 34, 46, 0.40);
-  background: rgba(207, 34, 46, 0.07);
+  border-color: rgba(207, 34, 46, 0.50);
+  background: rgba(207, 34, 46, 0.10);
 }
 html[data-theme="light"] .eng-end-call-btn:hover {
-  background: rgba(207, 34, 46, 0.14);
+  background: rgba(207, 34, 46, 0.20);
   border-color: var(--danger-soft);
 }
 
 html[data-theme="light"] .eng-working-btn {
-  border-color: rgba(26, 127, 55, 0.30);
-  background: rgba(26, 127, 55, 0.06);
+  border-color: rgba(26, 127, 55, 0.42);
+  background: rgba(26, 127, 55, 0.10);
 }
 html[data-theme="light"] .eng-working-btn:hover {
-  background: rgba(26, 127, 55, 0.14);
+  background: rgba(26, 127, 55, 0.20);
   border-color: var(--success);
 }
 html[data-theme="light"] .eng-working-btn--revert {
-  border-color: rgba(149, 56, 0, 0.30);
-  background: rgba(149, 56, 0, 0.06);
+  border-color: rgba(149, 56, 0, 0.42);
+  background: rgba(149, 56, 0, 0.10);
 }
 html[data-theme="light"] .eng-working-btn--revert:hover {
-  background: rgba(149, 56, 0, 0.14);
+  background: rgba(149, 56, 0, 0.20);
   border-color: var(--eng-external);
 }
 
@@ -1273,8 +1309,25 @@ html[data-theme="light"] .pill:hover { background: rgba(26, 127, 55, 0.07); }
 html[data-theme="light"] .pill.inactive:hover { background: rgba(140, 149, 159, 0.08); }
 
 html[data-theme="light"] .eng-card-badge {
-  background: rgba(9, 105, 218, 0.10);
+  background: rgba(9, 105, 218, 0.08);
+  border-color: rgba(9, 105, 218, 0.22);
   color: var(--accent);
+}
+
+html[data-theme="light"] .eng-status-badge {
+  background: rgba(87, 96, 106, 0.08);
+  border-color: rgba(87, 96, 106, 0.20);
+  color: var(--text-muted);
+}
+html[data-theme="light"] .eng-status-badge--active {
+  background: rgba(26, 127, 55, 0.10);
+  border-color: rgba(26, 127, 55, 0.28);
+  color: var(--success);
+}
+html[data-theme="light"] .eng-status-badge--scheduled {
+  background: rgba(149, 56, 0, 0.10);
+  border-color: rgba(149, 56, 0, 0.28);
+  color: var(--eng-external);
 }
 
 html[data-theme="light"] .eng-search:focus {

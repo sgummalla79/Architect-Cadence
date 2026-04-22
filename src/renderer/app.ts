@@ -132,12 +132,13 @@
   let engagementRecords: Record<string, unknown>[] = [];
 
   function buildCardHtml(r: Record<string, unknown>): string {
-    const id     = escapeHtml(String(r['Id'] ?? ''));
-    const name   = escapeHtml(String(r['Name'] ?? ''));
-    const title  = escapeHtml(String(r['Title__c'] ?? ''));
-    const stage  = escapeHtml(String(r['Stage__c'] ?? ''));
-    const status = escapeHtml(String(r['Engagement_Status__c'] ?? ''));
-    const isScheduled = String(r['Engagement_Status__c'] ?? '') === SCHEDULED_STATUS;
+    const id        = escapeHtml(String(r['Id'] ?? ''));
+    const name      = escapeHtml(String(r['Name'] ?? ''));
+    const title     = escapeHtml(String(r['Title__c'] ?? ''));
+    const stage     = escapeHtml(String(r['Stage__c'] ?? ''));
+    const status    = escapeHtml(String(r['Engagement_Status__c'] ?? ''));
+    const rawStatus = String(r['Engagement_Status__c'] ?? '');
+    const isScheduled = rawStatus === SCHEDULED_STATUS;
 
     const ICON_OPEN =
       `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">` +
@@ -145,40 +146,51 @@
       `<polyline points="8 1 11 1 11 4"/><line x1="11" y1="1" x2="6" y2="6"/>` +
       `</svg>`;
 
-    const workingBtn = isScheduled
-      ? ''
-      : (String(r['Engagement_Status__c'] ?? '') === 'In Progress'
-          ? `<button class="eng-working-btn eng-working-btn--revert" data-record-id="${id}" data-action="working">Waiting on Customer</button>`
-          : `<button class="eng-working-btn" data-record-id="${id}" data-action="working">Working</button>`
-        );
+    // Status badge color variant
+    let statusVariant = '';
+    if (rawStatus === 'In Progress') statusVariant = ' eng-status-badge--active';
+    else if (rawStatus === SCHEDULED_STATUS) statusVariant = ' eng-status-badge--scheduled';
 
+    // Row 1: name | stage badge | status badge | open button (all left)
     const row1 =
       `<div class="eng-card-header">` +
         `<span class="eng-card-name">${name}</span>` +
-        workingBtn +
+        (stage ? `<span class="eng-card-badge">${stage}</span>` : '') +
+        `<span class="eng-status-badge${statusVariant}">${status}</span>` +
         `<button class="eng-open-btn" data-record-id="${id}" data-open="true" title="Open in Salesforce">${ICON_OPEN}</button>` +
-        (title ? `<span class="eng-card-title">${title}</span>` : '') +
       `</div>`;
 
-    const stageStatus = [stage, status].filter(Boolean).join(' — ');
+    // Row 2: title (only if present)
+    const row2 = title
+      ? `<div class="eng-card-title-row"><span class="eng-card-title">${title}</span></div>`
+      : '';
+
+    // Row 3: working button (left) | spacer | duration + call buttons (right)
+    const workingBtn = isScheduled
+      ? ''
+      : (rawStatus === 'In Progress'
+          ? `<button class="eng-working-btn eng-working-btn--revert" data-record-id="${id}" data-action="working">Waiting on Customer</button>`
+          : `<button class="eng-working-btn" data-record-id="${id}" data-action="working">Working</button>`
+        );
 
     const durationOpts = callDurationOptions
       .map((d) => `<option${d === DEFAULT_DURATION ? ' selected' : ''}>${escapeHtml(d)}</option>`)
       .join('');
 
-    const actions = isScheduled
+    const callBtns = isScheduled
       ? `<button class="eng-end-call-btn" data-record-id="${id}">End Call</button>`
       : `<select class="eng-duration" title="Call duration">${durationOpts}</select>` +
         `<button class="eng-call-btn eng-call-internal" data-record-id="${id}" data-action="internal">${ICON_INTERNAL} Internal Call</button>` +
         `<button class="eng-call-btn eng-call-external" data-record-id="${id}" data-action="customer">${ICON_EXTERNAL} External Call</button>`;
 
-    const row2 =
+    const row3 =
       `<div class="eng-card-footer">` +
-        `<span class="eng-card-status">${stageStatus}</span>` +
-        actions +
+        workingBtn +
+        `<span class="eng-footer-spacer"></span>` +
+        callBtns +
       `</div>`;
 
-    return `<div class="eng-card" data-record-id="${id}">${row1}${row2}</div>`;
+    return `<div class="eng-card" data-record-id="${id}">${row1}${row2}${row3}</div>`;
   }
 
   function renderEngagements(records: Record<string, unknown>[]): void {
