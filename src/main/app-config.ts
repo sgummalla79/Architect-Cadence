@@ -119,25 +119,25 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
 
   // v2 → v3: add engagementsView with sample defaults if missing.
   if (!('engagementsView' in obj)) {
-    obj['engagementsView'] = SAMPLE_CONFIG.engagementsView;
+    obj['engagementsView'] = getDefaultConfig().engagementsView;
     migrated = true;
   }
 
   // v3 → v4: add call action configs if missing (old top-level placement).
   if (!('customerCallAction' in obj)) {
-    obj['customerCallAction'] = SAMPLE_CONFIG.engagementsView!.customerCallAction;
+    obj['customerCallAction'] = getDefaultConfig().engagementsView!.customerCallAction;
     migrated = true;
   }
   if (!('internalCallAction' in obj)) {
-    obj['internalCallAction'] = SAMPLE_CONFIG.engagementsView!.internalCallAction;
+    obj['internalCallAction'] = getDefaultConfig().engagementsView!.internalCallAction;
     migrated = true;
   }
   if (!('endCallAction' in obj)) {
-    obj['endCallAction'] = SAMPLE_CONFIG.engagementsView!.endCallAction;
+    obj['endCallAction'] = getDefaultConfig().engagementsView!.endCallAction;
     migrated = true;
   }
   if (!('workingAction' in obj)) {
-    obj['workingAction'] = SAMPLE_CONFIG.engagementsView!.workingAction;
+    obj['workingAction'] = getDefaultConfig().engagementsView!.workingAction;
     migrated = true;
   }
 
@@ -168,7 +168,7 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
     if (typeof rawEv === 'object' && rawEv !== null && !Array.isArray(rawEv)) {
       const ev = rawEv as Record<string, unknown>;
       if (!('callDurations' in ev)) {
-        ev['callDurations'] = SAMPLE_CONFIG.engagementsView!.callDurations;
+        ev['callDurations'] = getDefaultConfig().engagementsView!.callDurations;
         migrated = true;
       }
     }
@@ -180,7 +180,7 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
     if (typeof rawEv === 'object' && rawEv !== null && !Array.isArray(rawEv)) {
       const ev = rawEv as Record<string, unknown>;
       if (!('cardDisplay' in ev)) {
-        ev['cardDisplay'] = SAMPLE_CONFIG.engagementsView!.cardDisplay;
+        ev['cardDisplay'] = getDefaultConfig().engagementsView!.cardDisplay;
         migrated = true;
       }
     }
@@ -273,12 +273,17 @@ export function scaffoldSampleConfigIfMissing(): boolean {
 function writeSampleConfig(): void {
   const p = getAppConfigPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(SAMPLE_CONFIG, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(p, JSON.stringify(getDefaultConfig(), null, 2) + '\n', 'utf8');
 }
 
-// ============ Sample config ============
+/** Returns the production config when packaged, dev config otherwise. */
+function getDefaultConfig(): JobConfig {
+  return app.isPackaged ? PROD_CONFIG : DEV_CONFIG;
+}
 
-const SAMPLE_CONFIG: JobConfig = {
+// ============ Dev config ============
+
+const DEV_CONFIG: JobConfig = {
   domain: 'exp-cloud.my.salesforce.com',
   apiVersion: 'v66.0',
   logLevel: 'info',
@@ -324,7 +329,7 @@ const SAMPLE_CONFIG: JobConfig = {
             { field: 'Notes__c',       value: 'Please update notes on this record after customer call is completed' },
             { field: 'Engagement__c',  value: '{recordId}' },
             { field: 'AssignedTo__c',  value: '{currentUserId}' },
-            { field: 'StartDate__c',    value: '{currentDate}' },
+            { field: 'StartDate__c',   value: '{currentDate}' },
           ],
         },
       ],
@@ -343,7 +348,7 @@ const SAMPLE_CONFIG: JobConfig = {
             { field: 'Notes__c',       value: 'Please update notes on this record after internal call is completed' },
             { field: 'Engagement__c',  value: '{recordId}' },
             { field: 'AssignedTo__c',  value: '{currentUserId}' },
-            { field: 'StartDate__c',    value: '{currentDate}' },
+            { field: 'StartDate__c',   value: '{currentDate}' },
           ],
         },
       ],
@@ -356,6 +361,91 @@ const SAMPLE_CONFIG: JobConfig = {
     endCallAction: {
       updateFields: [
         { field: 'Engagement_Status__c', value: 'Waiting on Customer' },
+      ],
+    },
+  },
+};
+
+// ============ Production config ============
+
+const PROD_CONFIG: JobConfig = {
+  domain: 'orgcs.my.salesforce.com',
+  apiVersion: 'v66.0',
+  logLevel: 'info',
+  object: 'csc__Playbook__c',
+  ownerFieldName: 'OwnerId',
+  maxRecords: 15,
+  dailySchedule: {
+    filters: {
+      conditions: [
+        { field: 'csc__Stage__c', operator: '=', value: 'Delivery' },
+        { field: 'csc__Playbook_Status__c', operator: '!=', value: 'Waiting on Customer' },
+      ],
+      logic: '1 AND 2',
+    },
+    updateFields: [{ field: 'csc__Playbook_Status__c', value: 'Waiting on Customer' }],
+  },
+  engagementsView: {
+    query: {
+      fields: ['Name', 'Title__c', 'csc__Stage__c', 'csc__Playbook_Status__c'],
+      conditions: [
+        { field: 'csc__Stage__c', operator: '=', value: 'Delivery' },
+      ],
+      logic: '1',
+    },
+    callDurations: ['30s', '1m', '5m', '15m', '30m', '45m', '1h'],
+    cardDisplay: {
+      nameField:   'Name',
+      titleField:  'Title__c',
+      stageField:  'csc__Stage__c',
+      statusField: 'csc__Playbook_Status__c',
+    },
+    customerCallAction: {
+      updateFields: [
+        { field: 'csc__Playbook_Status__c', value: 'Call/Meeting Scheduled' },
+      ],
+      createRecords: [
+        {
+          object: 'csc__Activity__c',
+          fields: [
+            { field: 'cssf_Subject__c',     value: 'Customer Call' },
+            { field: 'cssf_Priority__c',    value: 'High' },
+            { field: 'csc__Type__c',        value: 'External Meeting' },
+            { field: 'csc__Notes__c',       value: 'Please update notes on this record after customer call is completed' },
+            { field: 'cssf_Engagement__c',  value: '{recordId}' },
+            { field: 'cssf_Assigned_To__c', value: '{currentUserId}' },
+            { field: 'cssf_Start_Date__c',  value: '{currentDate}' },
+          ],
+        },
+      ],
+    },
+    internalCallAction: {
+      updateFields: [
+        { field: 'csc__Playbook_Status__c', value: 'Call/Meeting Scheduled' },
+      ],
+      createRecords: [
+        {
+          object: 'csc__Activity__c',
+          fields: [
+            { field: 'cssf_Subject__c',     value: 'Internal Call with CSM/Product' },
+            { field: 'cssf_Priority__c',    value: 'Medium' },
+            { field: 'csc__Type__c',        value: 'Internal Meeting' },
+            { field: 'csc__Notes__c',       value: 'Please update notes on this record after internal call is completed' },
+            { field: 'cssf_Engagement__c',  value: '{recordId}' },
+            { field: 'cssf_Assigned_To__c', value: '{currentUserId}' },
+            { field: 'cssf_Start_Date__c',  value: '{currentDate}' },
+          ],
+        },
+      ],
+    },
+    workingAction: {
+      updateFields: [
+        { field: 'csc__Playbook_Status__c', value: 'In Progress' },
+      ],
+    },
+    endCallAction: {
+      updateFields: [
+        { field: 'csc__Playbook_Status__c', value: 'Waiting on Customer' },
       ],
     },
   },
