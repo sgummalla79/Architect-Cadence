@@ -56,6 +56,7 @@
     onTrayRunNow: (cb: () => void) => void;
     onLogAppend: (cb: (entry: LogEntry) => void) => void;
     onAutoEndCall: (cb: (data: { recordId: string; newStatus: string }) => void) => void;
+    onEngagementsRefresh: (cb: () => void) => void;
   }
 
   const cadence = (window as unknown as { companion: CompanionApi }).companion;
@@ -668,6 +669,9 @@
     allLogs = [entry, ...allLogs];
     renderLogs();
   });
+  cadence.onEngagementsRefresh(() => {
+    void loadEngagements();
+  });
   cadence.onAutoEndCall(({ recordId, newStatus }) => {
     const idx = engagementRecords.findIndex((r) => String(r['Id']) === recordId);
     if (idx !== -1) {
@@ -686,5 +690,17 @@
   void cadence.getPaths().then((p) => {
     $('aboutConfigPath').textContent = p.configPath;
     $('aboutLogPath').textContent = p.logPath;
+
+    function wireCopyBtn(btnId: string, text: string): void {
+      const btn = $(btnId) as HTMLButtonElement;
+      btn.addEventListener('click', () => {
+        void navigator.clipboard.writeText(text).then(() => {
+          btn.classList.add('copied');
+          setTimeout(() => btn.classList.remove('copied'), 1500);
+        });
+      });
+    }
+    wireCopyBtn('copyConfigPath', p.configPath);
+    wireCopyBtn('copyLogPath', p.logPath);
   });
 })();

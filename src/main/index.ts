@@ -1,13 +1,14 @@
 import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } from 'electron';
 import * as path from 'path';
 import {
-  getJobConfigPath,
-  loadJobConfig,
-  readJobConfigRaw,
+  getAppConfigPath,
+  loadAppConfig,
+  migrateConfigFilename,
+  readAppConfigRaw,
   resolveLoginUrl,
-  saveJobConfigRaw,
+  saveAppConfigRaw,
   scaffoldSampleConfigIfMissing,
-} from './job-config';
+} from './app-config';
 import { performOAuthFlow, DEFAULT_CLIENT_ID } from './oauth-flow';
 import {
   clearSession,
@@ -263,6 +264,7 @@ function pushLog(entry: LogEntry): void {
 }
 
 // Persist a completed scheduler run to disk + push it to the renderer's log panel.
+// Also signals the renderer to refresh the engagements tab so it reflects any status changes.
 function recordRun(result: RunResult, runId: string): void {
   const entry: LogEntry = {
     ts: new Date().toISOString(),
@@ -277,6 +279,7 @@ function recordRun(result: RunResult, runId: string): void {
     runId,
   };
   pushLog(entry);
+  mainWindow?.webContents.send('engagements:refresh');
 }
 
 // Emit a scheduler step log (query, update, warn, etc.) with the run's runId for grouping.
@@ -362,7 +365,7 @@ async function executeJob(runId: string): Promise<RunResult> {
     };
   }
 
-  const configResult = loadJobConfig();
+  const configResult = loadAppConfig();
   if (!configResult.ok) {
     return {
       ok: false,
@@ -456,7 +459,7 @@ ipcMain.handle('action:test-connection', async () => {
 ipcMain.handle('config:read', () => {
   // Auto-scaffold so the editor is never empty on first launch.
   scaffoldSampleConfigIfMissing();
-  const text = readJobConfigRaw();
+  const text = readAppConfigRaw();
   return { ok: true, text };
 });
 
@@ -474,7 +477,7 @@ ipcMain.handle('config:validate', (_e, rawText: string) => {
 });
 
 ipcMain.handle('config:save', (_e, rawText: string) => {
-  const result = saveJobConfigRaw(rawText);
+  const result = saveAppConfigRaw(rawText);
   if (!result.ok) return { ok: false, errors: result.errors };
   return { ok: true, formatted: result.formatted, message: 'Config saved' };
 });
@@ -484,7 +487,7 @@ ipcMain.handle('config:save', (_e, rawText: string) => {
 ipcMain.handle('engagements:fetch', async () => {
   if (!isSignedIn()) return { ok: false, error: 'Not signed in', records: [] };
 
-  const configResult = loadJobConfig();
+  const configResult = loadAppConfig();
   if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}`, records: [] };
 
   const config = configResult.config;
@@ -572,7 +575,7 @@ function startCallTimer(recordId: string, durationMs: number, config: import('..
 ipcMain.handle('engagements:call-action', async (_e, { recordId, actionType, duration }: { recordId: string; actionType: 'customer' | 'internal'; duration: string }) => {
   if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
 
-  const configResult = loadJobConfig();
+  const configResult = loadAppConfig();
   if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}` };
 
   const config = configResult.config;
@@ -628,7 +631,7 @@ ipcMain.handle('engagements:call-action', async (_e, { recordId, actionType, dur
 
 ipcMain.handle('engagements:open-record', async (_e, { recordId }: { recordId: string }) => {
   if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
-  const configResult = loadJobConfig();
+  const configResult = loadAppConfig();
   if (!configResult.ok) return { ok: false, error: 'Config invalid' };
   const meta = getMetadata()!;
   const url = `${meta.instanceUrl}/lightning/r/${configResult.config.object}/${recordId}/view`;
@@ -641,7 +644,7 @@ ipcMain.handle('engagements:working-action', async (
   { recordId, currentStatus }: { recordId: string; currentStatus: string }
 ) => {
   if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
-  const configResult = loadJobConfig();
+  const configResult = loadAppConfig();
   if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}` };
   const config = configResult.config;
 
@@ -685,7 +688,7 @@ ipcMain.handle('engagements:working-action', async (
 ipcMain.handle('engagements:end-call', async (_e, { recordId }: { recordId: string }) => {
   if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
 
-  const configResult = loadJobConfig();
+  const configResult = loadAppConfig();
   if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}` };
 
   const config = configResult.config;
@@ -737,7 +740,7 @@ ipcMain.handle('engagements:clear-stale-timers', (_e, { scheduledIds }: { schedu
 
 ipcMain.handle('paths:get', () => {
   return {
-    configPath: getJobConfigPath(),
+    configPath: getAppConfigPath(),
     logPath: getLogPath(),
   };
 });
@@ -796,10 +799,13 @@ app.whenReady().then(() => {
     console.log(`[startup] Launch-at-startup not supported on ${process.platform}`);
   }
 
+  // Rename legacy job-config.json → app-config.json if needed.
+  migrateConfigFilename();
+
   // Create sample config on very first run so there's something to sign in against.
   try {
     if (scaffoldSampleConfigIfMissing()) {
-      console.log(`[config] Created sample config at ${getJobConfigPath()}`);
+      console.log(`[config] Created sample config at ${getAppConfigPath()}`);
     }
   } catch (err) {
     console.error(`[config] Could not scaffold sample: ${(err as Error).message}`);

@@ -49,6 +49,8 @@ const api = {
     ipcRenderer.on('log:append', (_e, entry) => cb(entry)),
   onAutoEndCall: (cb: (data: { recordId: string; newStatus: string }) => void) =>
     ipcRenderer.on('engagements:auto-end-call', (_e, data) => cb(data)),
+  onEngagementsRefresh: (cb: () => void) =>
+    ipcRenderer.on('engagements:refresh', () => cb()),
 };
 
 contextBridge.exposeInMainWorld('companion', api);

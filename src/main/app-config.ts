@@ -1,7 +1,6 @@
-// Reads the full job config from <userData>/job-config.json.
-// On first run, scaffolds a sample config matching the spec example so the
-// user can edit it via the Settings tab's "Edit Config" button without having
-// to construct the file manually.
+// Reads the full app config from <userData>/app-config.json.
+// On first run, scaffolds a sample config so the user can edit it via the
+// Settings tab's "Edit Config" button without having to construct it manually.
 
 import { app } from 'electron';
 import * as fs from 'fs';
@@ -9,21 +8,40 @@ import * as path from 'path';
 import { normalizeLoginUrl } from './oauth';
 import { JobConfig, ValidationResult, validateConfig } from '../shared';
 
-const CONFIG_FILENAME = 'job-config.json';
+const CONFIG_FILENAME = 'app-config.json';
+const LEGACY_CONFIG_FILENAME = 'job-config.json';
 const DEFAULT_LOGIN_URL = 'https://login.salesforce.com';
 
-export function getJobConfigPath(): string {
+export function getAppConfigPath(): string {
   return path.join(app.getPath('userData'), CONFIG_FILENAME);
 }
 
 /**
- * Return the login URL derived from the job config's `domain` field.
+ * One-time migration: if the old job-config.json exists and app-config.json
+ * does not, rename it so existing configs are preserved across the rename.
+ */
+export function migrateConfigFilename(): void {
+  const newPath = getAppConfigPath();
+  if (fs.existsSync(newPath)) return;
+  const oldPath = path.join(app.getPath('userData'), LEGACY_CONFIG_FILENAME);
+  if (fs.existsSync(oldPath)) {
+    try {
+      fs.renameSync(oldPath, newPath);
+      console.log('[config] Renamed job-config.json → app-config.json');
+    } catch (err) {
+      console.warn('[config] Could not rename legacy config file:', (err as Error).message);
+    }
+  }
+}
+
+/**
+ * Return the login URL derived from the app config's `domain` field.
  * Falls back to https://login.salesforce.com if the file doesn't exist or the
  * domain isn't set. Does NOT fail on an invalid config — signing in should
  * still be possible even if the rest of the config needs fixing.
  */
 export function resolveLoginUrl(): string {
-  const p = getJobConfigPath();
+  const p = getAppConfigPath();
   if (!fs.existsSync(p)) return DEFAULT_LOGIN_URL;
   try {
     const obj = JSON.parse(fs.readFileSync(p, 'utf8')) as { domain?: unknown };
@@ -36,9 +54,9 @@ export function resolveLoginUrl(): string {
   return DEFAULT_LOGIN_URL;
 }
 
-/** Load and validate the full job config. Returns a ValidationResult. */
-export function loadJobConfig(): ValidationResult {
-  const p = getJobConfigPath();
+/** Load and validate the full app config. Returns a ValidationResult. */
+export function loadAppConfig(): ValidationResult {
+  const p = getAppConfigPath();
   if (!fs.existsSync(p)) {
     return {
       ok: false,
@@ -64,10 +82,9 @@ export function loadJobConfig(): ValidationResult {
 
   const { migrated, config: migratedConfig } = migrateConfig(parsed);
   if (migrated) {
-    // Write the migrated config back so the file stays in sync with the current schema.
     try {
       fs.writeFileSync(p, JSON.stringify(migratedConfig, null, 2) + '\n', 'utf8');
-      console.log('[config] Migrated job-config.json to current schema.');
+      console.log('[config] Migrated app-config.json to current schema.');
     } catch (err) {
       console.warn('[config] Migration write failed:', (err as Error).message);
     }
@@ -81,8 +98,6 @@ export function loadJobConfig(): ValidationResult {
  * Migrate a raw parsed config object from any previous schema version to the
  * current one. Returns the (possibly transformed) object and a flag indicating
  * whether a migration was applied so the caller can persist the change.
- *
- * Add a new `if` block here for every future schema change.
  */
 function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
@@ -163,8 +178,8 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
 }
 
 /** Read the raw JSON text of the config file. Returns empty string if missing. */
-export function readJobConfigRaw(): string {
-  const p = getJobConfigPath();
+export function readAppConfigRaw(): string {
+  const p = getAppConfigPath();
   if (!fs.existsSync(p)) return '';
   try {
     return fs.readFileSync(p, 'utf8');
@@ -178,7 +193,7 @@ export function readJobConfigRaw(): string {
  * with 2-space indentation. Returns the formatted text on success, or a
  * ValidationResult with errors otherwise.
  */
-export function saveJobConfigRaw(rawText: string): ValidationResult & { formatted?: string } {
+export function saveAppConfigRaw(rawText: string): ValidationResult & { formatted?: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
@@ -190,7 +205,7 @@ export function saveJobConfigRaw(rawText: string): ValidationResult & { formatte
   if (!validation.ok) return validation;
 
   const formatted = JSON.stringify(parsed, null, 2) + '\n';
-  const p = getJobConfigPath();
+  const p = getAppConfigPath();
   try {
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, formatted, 'utf8');
@@ -201,24 +216,23 @@ export function saveJobConfigRaw(rawText: string): ValidationResult & { formatte
 }
 
 /**
- * Scaffold a sample config at <userData>/job-config.json if one doesn't exist.
+ * Scaffold a sample config at <userData>/app-config.json if one doesn't exist.
  * Called on first app launch. Returns true if a file was written.
  */
 export function scaffoldSampleConfigIfMissing(): boolean {
-  const p = getJobConfigPath();
+  const p = getAppConfigPath();
   if (fs.existsSync(p)) return false;
   writeSampleConfig();
   return true;
 }
 
 function writeSampleConfig(): void {
-  const p = getJobConfigPath();
+  const p = getAppConfigPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(SAMPLE_CONFIG, null, 2) + '\n', 'utf8');
 }
 
 // ============ Sample config ============
-// Matches the spec example. Users should edit this to match their real setup.
 
 const SAMPLE_CONFIG: JobConfig = {
   domain: 'exp-cloud.my.salesforce.com',

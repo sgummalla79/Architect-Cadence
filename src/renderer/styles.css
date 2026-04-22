@@ -768,8 +768,11 @@ body {
 .logs {
   margin-top: 14px;
   flex: 1 1 auto;
-  min-height: 200px;
-  overflow-y: auto;
+  min-height: 0;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
   font-size: 12.5px;
   line-height: 1.6;
@@ -784,10 +787,10 @@ body {
 /* ---- Log accordions ---- */
 
 .log-accordion {
-  margin-bottom: 8px;
+  margin-bottom: 0;
   border: 1px solid var(--border);
   border-radius: 6px;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .accordion-header {
@@ -831,6 +834,8 @@ body {
 .accordion-body {
   padding: 6px 12px 8px;
   background: var(--bg);
+  overflow-y: auto;
+  max-height: 260px;
 }
 
 .log-entry {
@@ -1026,7 +1031,68 @@ body {
   font-family: 'SF Mono', Menlo, Monaco, monospace;
   font-size: 12.5px;
   text-align: right;
-  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px;
+}
+.file-row:last-child { border-bottom: none; }
+
+.file-row-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.file-path-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.file-path-wrap code {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-family: 'SF Mono', Menlo, Monaco, monospace;
+  font-size: 12px;
+}
+
+.btn-copy-path {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+.btn-copy-path:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+  background: var(--bg-elevated);
+}
+.btn-copy-path.copied {
+  border-color: var(--success);
+  color: var(--success);
 }
 
 /* ===== Toast ===== */
