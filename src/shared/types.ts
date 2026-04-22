@@ -75,10 +75,24 @@ export interface EngagementsQuery {
   logic: string;
 }
 
+/** Maps UI display slots to Salesforce field API names on the engagement object. */
+export interface CardDisplayConfig {
+  /** Field shown as the primary card name (Row 1). Defaults to 'Name'. */
+  nameField?: string;
+  /** Field shown as the subtitle row (Row 2). Defaults to 'Title__c'. */
+  titleField?: string;
+  /** Field shown as the stage badge. Defaults to 'Stage__c'. */
+  stageField?: string;
+  /** Field shown as the status badge and used for button-visibility logic. Defaults to 'Engagement_Status__c'. */
+  statusField?: string;
+}
+
 export interface EngagementsViewConfig {
   query: EngagementsQuery;
   /** Duration options shown in the call duration dropdown, e.g. ["30s","1m","1h"]. */
   callDurations?: string[];
+  /** Maps card UI slots to Salesforce field API names. All fields default if omitted. */
+  cardDisplay?: CardDisplayConfig;
   /** Action executed when the External Call button is clicked on an engagement card. */
   customerCallAction?: CallAction;
   /** Action executed when the Internal Call button is clicked on an engagement card. */

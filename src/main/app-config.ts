@@ -174,6 +174,18 @@ function migrateConfig(raw: unknown): { migrated: boolean; config: unknown } {
     }
   }
 
+  // v6 → v7: add cardDisplay inside engagementsView if missing.
+  {
+    const rawEv = obj['engagementsView'];
+    if (typeof rawEv === 'object' && rawEv !== null && !Array.isArray(rawEv)) {
+      const ev = rawEv as Record<string, unknown>;
+      if (!('cardDisplay' in ev)) {
+        ev['cardDisplay'] = SAMPLE_CONFIG.engagementsView!.cardDisplay;
+        migrated = true;
+      }
+    }
+  }
+
   return { migrated, config: obj };
 }
 
@@ -260,6 +272,12 @@ const SAMPLE_CONFIG: JobConfig = {
       logic: '1',
     },
     callDurations: ['30s', '1m', '5m', '15m', '30m', '45m', '1h'],
+    cardDisplay: {
+      nameField:   'Name',
+      titleField:  'Title__c',
+      stageField:  'Stage__c',
+      statusField: 'Engagement_Status__c',
+    },
     customerCallAction: {
       updateFields: [
         { field: 'Engagement_Status__c', value: 'Call/Meeting Scheduled' },

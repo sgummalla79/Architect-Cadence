@@ -506,7 +506,8 @@ ipcMain.handle('engagements:fetch', async () => {
     const result = await client.query(soql);
     logEng('info', `Fetched ${result.records.length} engagement(s).`);
     const callDurations = config.engagementsView!.callDurations ?? ['30s', '1m', '5m', '15m', '30m', '45m', '1h'];
-    return { ok: true, records: result.records, callDurations };
+    const cardDisplay = config.engagementsView!.cardDisplay ?? {};
+    return { ok: true, records: result.records, callDurations, cardDisplay };
   } catch (err) {
     const msg = scrubTokens((err as Error).message ?? 'Unknown error');
     logEng('error', `Engagements fetch failed: ${msg}`);
@@ -558,7 +559,8 @@ function startCallTimer(recordId: string, durationMs: number, config: import('..
       const fields = endCallAction.updateFields.map((f) => `${f.field}=${JSON.stringify(f.value)}`).join(', ');
       logEng('info', `Auto-reverting ${config.object} ${recordId}: ${fields}`, runId);
       await client.updateRecords(config.object, [payload as { Id: string; [k: string]: unknown }]);
-      const newStatus = endCallAction.updateFields.find(f => f.field === 'Engagement_Status__c')?.value ?? '';
+      const statusField = config.engagementsView?.cardDisplay?.statusField ?? 'Engagement_Status__c';
+      const newStatus = endCallAction.updateFields.find(f => f.field === statusField)?.value ?? '';
       logEng('success', `Auto-revert complete — status set to "${newStatus}" for ${recordId}.`, runId);
       mainWindow?.webContents.send('engagements:auto-end-call', { recordId, newStatus });
     } catch (err) {
@@ -673,7 +675,8 @@ ipcMain.handle('engagements:working-action', async (
     logEng('info', `Patching ${config.object} ${recordId}: ${fields}`, runId);
     await client.updateRecords(config.object, [payload as { Id: string; [k: string]: unknown }]);
     // Return the new status so the renderer can update in-memory without a refetch.
-    const newStatus = action.updateFields.find(f => f.field === 'Engagement_Status__c')?.value ?? '';
+    const statusField = config.engagementsView?.cardDisplay?.statusField ?? 'Engagement_Status__c';
+    const newStatus = action.updateFields.find(f => f.field === statusField)?.value ?? '';
     logEng('success', `Status updated to "${newStatus}".`, runId);
     return { ok: true, newStatus };
   } catch (err) {

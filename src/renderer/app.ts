@@ -45,7 +45,7 @@
     configSave: (text: string) => Promise<{ ok: boolean; message?: string; formatted?: string; errors?: string[] }>;
     getLogs: (window: LogWindowKey) => Promise<{ ok: boolean; entries: LogEntry[]; message?: string }>;
     clearLogs: () => Promise<{ ok: boolean; message?: string }>;
-    fetchEngagements: () => Promise<{ ok: boolean; records: Record<string, unknown>[]; callDurations?: string[]; error?: string }>;
+    fetchEngagements: () => Promise<{ ok: boolean; records: Record<string, unknown>[]; callDurations?: string[]; cardDisplay?: { nameField?: string; titleField?: string; stageField?: string; statusField?: string }; error?: string }>;
     callAction: (recordId: string, actionType: 'customer' | 'internal', duration: string) => Promise<{ ok: boolean; error?: string }>;
     endCall: (recordId: string) => Promise<{ ok: boolean; error?: string }>;
     clearStaleTimers: (scheduledIds: string[]) => Promise<{ ok: boolean }>;
@@ -118,6 +118,11 @@
   const DEFAULT_DURATION = '1h';
   let callDurationOptions: string[] = [DEFAULT_DURATION];
 
+  let cardNameField   = 'Name';
+  let cardTitleField  = 'Title__c';
+  let cardStageField  = 'Stage__c';
+  let cardStatusField = 'Engagement_Status__c';
+
   const ICON_INTERNAL =
     `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
     `<path d="M11 8.5l-2.5 2.5a9 9 0 01-7.5-7.5L3.5 1 5 4 3.8 5.2a6.5 6.5 0 003 3L8 7l3 1.5z"/>` +
@@ -133,11 +138,11 @@
 
   function buildCardHtml(r: Record<string, unknown>): string {
     const id        = escapeHtml(String(r['Id'] ?? ''));
-    const name      = escapeHtml(String(r['Name'] ?? ''));
-    const title     = escapeHtml(String(r['Title__c'] ?? ''));
-    const stage     = escapeHtml(String(r['Stage__c'] ?? ''));
-    const status    = escapeHtml(String(r['Engagement_Status__c'] ?? ''));
-    const rawStatus = String(r['Engagement_Status__c'] ?? '');
+    const name      = escapeHtml(String(r[cardNameField]   ?? ''));
+    const title     = escapeHtml(String(r[cardTitleField]  ?? ''));
+    const stage     = escapeHtml(String(r[cardStageField]  ?? ''));
+    const status    = escapeHtml(String(r[cardStatusField] ?? ''));
+    const rawStatus = String(r[cardStatusField] ?? '');
     const isScheduled = rawStatus === SCHEDULED_STATUS;
 
     const ICON_OPEN =
@@ -215,8 +220,8 @@
 
     const filtered = query
       ? engagementRecords.filter((r) => {
-          const name = String(r['Name'] ?? '').toLowerCase();
-          const title = String(r['Title__c'] ?? '').toLowerCase();
+          const name = String(r[cardNameField]  ?? '').toLowerCase();
+          const title = String(r[cardTitleField] ?? '').toLowerCase();
           return name.includes(query) || title.includes(query);
         })
       : engagementRecords;
@@ -241,9 +246,15 @@
     const result = await cadence.fetchEngagements();
     if (result.ok) {
       if (result.callDurations?.length) callDurationOptions = result.callDurations;
+      if (result.cardDisplay) {
+        cardNameField   = result.cardDisplay.nameField   ?? cardNameField;
+        cardTitleField  = result.cardDisplay.titleField  ?? cardTitleField;
+        cardStageField  = result.cardDisplay.stageField  ?? cardStageField;
+        cardStatusField = result.cardDisplay.statusField ?? cardStatusField;
+      }
       // Clear timers for records whose status changed away from scheduled externally.
       const scheduledIds = (result.records as Record<string, unknown>[])
-        .filter((r) => String(r['Engagement_Status__c'] ?? '') === SCHEDULED_STATUS)
+        .filter((r) => String(r[cardStatusField] ?? '') === SCHEDULED_STATUS)
         .map((r) => String(r['Id'] ?? ''));
       void cadence.clearStaleTimers(scheduledIds);
       renderEngagements(result.records);
@@ -289,7 +300,7 @@
         if (r.ok) {
           const idx = engagementRecords.findIndex((rec) => String(rec['Id']) === recordId);
           if (idx !== -1) {
-            engagementRecords[idx] = { ...engagementRecords[idx], Engagement_Status__c: SCHEDULED_STATUS };
+            engagementRecords[idx] = { ...engagementRecords[idx], [cardStatusField]: SCHEDULED_STATUS };
             const cardEl = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
             if (cardEl) cardEl.outerHTML = buildCardHtml(engagementRecords[idx]);
           }
@@ -301,11 +312,11 @@
         }
       } else if (actionType === 'working') {
         const idx = engagementRecords.findIndex((rec) => String(rec['Id']) === recordId);
-        const currentStatus = idx !== -1 ? String(engagementRecords[idx]['Engagement_Status__c'] ?? '') : '';
+        const currentStatus = idx !== -1 ? String(engagementRecords[idx][cardStatusField] ?? '') : '';
         const r = await cadence.workingAction(recordId, currentStatus);
         if (r.ok) {
           if (idx !== -1 && r.newStatus) {
-            engagementRecords[idx] = { ...engagementRecords[idx], Engagement_Status__c: r.newStatus };
+            engagementRecords[idx] = { ...engagementRecords[idx], [cardStatusField]: r.newStatus };
             const card = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
             if (card) card.outerHTML = buildCardHtml(engagementRecords[idx]);
           }
@@ -712,7 +723,7 @@
   cadence.onAutoEndCall(({ recordId, newStatus }) => {
     const idx = engagementRecords.findIndex((r) => String(r['Id']) === recordId);
     if (idx !== -1) {
-      engagementRecords[idx] = { ...engagementRecords[idx], Engagement_Status__c: newStatus };
+      engagementRecords[idx] = { ...engagementRecords[idx], [cardStatusField]: newStatus };
       const card = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
       if (card) card.outerHTML = buildCardHtml(engagementRecords[idx]);
     }

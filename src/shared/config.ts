@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import {
   ActionField,
   CallAction,
+  CardDisplayConfig,
   Condition,
   CreateRecordConfig,
   EngagementsQuery,
@@ -466,6 +467,26 @@ function validateEngagementsView(
     result.endCallAction = validateSimpleAction(ev.endCallAction, 'engagementsView.endCallAction', errors) ?? undefined;
   if ('workingAction' in ev)
     result.workingAction = validateSimpleAction(ev.workingAction, 'engagementsView.workingAction', errors) ?? undefined;
+
+  if ('cardDisplay' in ev) {
+    const cd = ev.cardDisplay;
+    if (!isObject(cd)) {
+      errors.push(`'engagementsView.cardDisplay' must be an object.`);
+    } else {
+      const cardDisplay: CardDisplayConfig = {};
+      for (const key of ['nameField', 'titleField', 'stageField', 'statusField'] as const) {
+        if (key in cd) {
+          const v = cd[key];
+          if (typeof v !== 'string' || v.trim().length === 0) {
+            errors.push(`'engagementsView.cardDisplay.${key}' must be a non-empty string.`);
+          } else {
+            cardDisplay[key] = v.trim();
+          }
+        }
+      }
+      result.cardDisplay = cardDisplay;
+    }
+  }
 
   return result;
 }
