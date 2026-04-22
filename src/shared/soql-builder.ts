@@ -164,19 +164,19 @@ export function buildSoql(config: JobConfig, options: BuildSoqlOptions): BuiltSo
     throw new Error('ownerFieldName is required in config — SOQL will not run without it.');
   }
 
-  const ast = parseLogic(config.filters.logic);
+  const ast = parseLogic(config.dailySchedule.filters.logic);
 
   // Sanity check: logic expression should only reference valid condition indices.
   const refs = collectIndices(ast);
   for (const ref of refs) {
-    if (ref < 1 || ref > config.filters.conditions.length) {
+    if (ref < 1 || ref > config.dailySchedule.filters.conditions.length) {
       throw new Error(
-        `Logic references condition ${ref}, but only ${config.filters.conditions.length} conditions are defined.`
+        `Logic references condition ${ref}, but only ${config.dailySchedule.filters.conditions.length} conditions are defined.`
       );
     }
   }
 
-  const userLogicExpr = renderLogic(ast, config.filters.conditions);
+  const userLogicExpr = renderLogic(ast, config.dailySchedule.filters.conditions);
   const ownerFilter = `${config.ownerFieldName} = '${escapeStringLiteral(options.currentUserId)}'`;
   // Note: renderLogic already wraps compound nodes (AND/OR) in parens, so no outer
   // wrap is needed when combining with the owner filter. Leaf conditions
@@ -190,6 +190,48 @@ export function buildSoql(config: JobConfig, options: BuildSoqlOptions): BuiltSo
     `SELECT ${selectFields.join(', ')} FROM ${config.object} ` +
     `WHERE ${whereExpression} ` +
     `LIMIT ${config.maxRecords + 1}`;
+
+  return { soql, whereExpression };
+}
+
+/**
+ * Build a SOQL query for the Engagements view tab.
+ * Selects the fields specified in engagementsView.query.fields (plus Id and ownerFieldName),
+ * applies the configured conditions + owner filter, and returns up to 200 records.
+ */
+export function buildEngagementsSOQL(config: JobConfig, options: BuildSoqlOptions): BuiltSoql {
+  if (!options.currentUserId) {
+    throw new Error('currentUserId is required to build the engagements SOQL query.');
+  }
+  if (!config.ownerFieldName) {
+    throw new Error('ownerFieldName is required in config — SOQL will not run without it.');
+  }
+  if (!config.engagementsView) {
+    throw new Error('engagementsView is not configured.');
+  }
+
+  const { conditions, logic, fields } = config.engagementsView.query;
+
+  const ast = parseLogic(logic);
+  const refs = collectIndices(ast);
+  for (const ref of refs) {
+    if (ref < 1 || ref > conditions.length) {
+      throw new Error(
+        `Logic references condition ${ref}, but only ${conditions.length} conditions are defined.`
+      );
+    }
+  }
+
+  const userLogicExpr = renderLogic(ast, conditions);
+  const ownerFilter = `${config.ownerFieldName} = '${escapeStringLiteral(options.currentUserId)}'`;
+  const whereExpression = `${userLogicExpr} AND ${ownerFilter}`;
+
+  const selectFields = Array.from(new Set(['Id', config.ownerFieldName, ...fields]));
+
+  const soql =
+    `SELECT ${selectFields.join(', ')} FROM ${config.object} ` +
+    `WHERE ${whereExpression} ` +
+    `LIMIT 200`;
 
   return { soql, whereExpression };
 }

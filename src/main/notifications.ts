@@ -41,7 +41,7 @@ export function notifyScheduledRun(result: RunResult, opts: NotifyOptions): void
   }
 
   const notification = new Notification({
-    title: 'Architect Cadence',
+    title: 'Architect Companion',
     body: result.message,
     silent: false,
   });

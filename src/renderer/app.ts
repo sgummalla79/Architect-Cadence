@@ -23,14 +23,15 @@
 
   interface LogEntry {
     ts: string;
-    level: 'info' | 'success' | 'error';
+    level: 'info' | 'success' | 'warn' | 'error';
     message: string;
+    source?: 'scheduler' | 'engagements';
     durationMs?: number;
     recordIds?: string[];
     runId?: string;
   }
 
-  interface CadenceApi {
+  interface CompanionApi {
     getState: () => Promise<AppState>;
     setActive: (isActive: boolean) => Promise<AppState>;
     setTime: (time: string) => Promise<AppState>;
@@ -44,13 +45,20 @@
     configSave: (text: string) => Promise<{ ok: boolean; message?: string; formatted?: string; errors?: string[] }>;
     getLogs: (window: LogWindowKey) => Promise<{ ok: boolean; entries: LogEntry[]; message?: string }>;
     clearLogs: () => Promise<{ ok: boolean; message?: string }>;
+    fetchEngagements: () => Promise<{ ok: boolean; records: Record<string, unknown>[]; callDurations?: string[]; error?: string }>;
+    callAction: (recordId: string, actionType: 'customer' | 'internal', duration: string) => Promise<{ ok: boolean; error?: string }>;
+    endCall: (recordId: string) => Promise<{ ok: boolean; error?: string }>;
+    clearStaleTimers: (scheduledIds: string[]) => Promise<{ ok: boolean }>;
+    workingAction: (recordId: string, currentStatus: string) => Promise<{ ok: boolean; error?: string; newStatus?: string }>;
+    openRecord: (recordId: string) => Promise<{ ok: boolean; error?: string }>;
     getPaths: () => Promise<{ configPath: string; logPath: string }>;
     onStateChanged: (cb: (state: AppState) => void) => void;
     onTrayRunNow: (cb: () => void) => void;
     onLogAppend: (cb: (entry: LogEntry) => void) => void;
+    onAutoEndCall: (cb: (data: { recordId: string; newStatus: string }) => void) => void;
   }
 
-  const cadence = (window as unknown as { cadence: CadenceApi }).cadence;
+  const cadence = (window as unknown as { companion: CompanionApi }).companion;
 
   // ============ Helpers ============
 
@@ -77,6 +85,219 @@
     );
   }
 
+  // ============ Engagements tab ============
+
+  const SCHEDULED_STATUS = 'Call/Meeting Scheduled';
+
+  const DEFAULT_DURATION = '1h';
+  let callDurationOptions: string[] = [DEFAULT_DURATION];
+
+  const ICON_INTERNAL =
+    `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M11 8.5l-2.5 2.5a9 9 0 01-7.5-7.5L3.5 1 5 4 3.8 5.2a6.5 6.5 0 003 3L8 7l3 1.5z"/>` +
+    `</svg>`;
+
+  const ICON_EXTERNAL =
+    `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M11 8.5l-2.5 2.5a9 9 0 01-7.5-7.5L3.5 1 5 4 3.8 5.2a6.5 6.5 0 003 3L8 7l3 1.5z"/>` +
+    `<path d="M8 1h3v3M11 1L7.5 4.5" stroke-width="1.8"/>` +
+    `</svg>`;
+
+  let engagementRecords: Record<string, unknown>[] = [];
+
+  function buildCardHtml(r: Record<string, unknown>): string {
+    const id     = escapeHtml(String(r['Id'] ?? ''));
+    const name   = escapeHtml(String(r['Name'] ?? ''));
+    const title  = escapeHtml(String(r['Title__c'] ?? ''));
+    const stage  = escapeHtml(String(r['Stage__c'] ?? ''));
+    const status = escapeHtml(String(r['Engagement_Status__c'] ?? ''));
+    const isScheduled = String(r['Engagement_Status__c'] ?? '') === SCHEDULED_STATUS;
+
+    const ICON_OPEN =
+      `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">` +
+      `<path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7"/>` +
+      `<polyline points="8 1 11 1 11 4"/><line x1="11" y1="1" x2="6" y2="6"/>` +
+      `</svg>`;
+
+    const workingBtn = isScheduled
+      ? ''
+      : (String(r['Engagement_Status__c'] ?? '') === 'In Progress'
+          ? `<button class="eng-working-btn eng-working-btn--revert" data-record-id="${id}" data-action="working">Waiting on Customer</button>`
+          : `<button class="eng-working-btn" data-record-id="${id}" data-action="working">Working</button>`
+        );
+
+    const row1 =
+      `<div class="eng-card-header">` +
+        `<span class="eng-card-name">${name}</span>` +
+        workingBtn +
+        `<button class="eng-open-btn" data-record-id="${id}" data-open="true" title="Open in Salesforce">${ICON_OPEN}</button>` +
+        (title ? `<span class="eng-card-title">${title}</span>` : '') +
+      `</div>`;
+
+    const stageStatus = [stage, status].filter(Boolean).join(' — ');
+
+    const durationOpts = callDurationOptions
+      .map((d) => `<option${d === DEFAULT_DURATION ? ' selected' : ''}>${escapeHtml(d)}</option>`)
+      .join('');
+
+    const actions = isScheduled
+      ? `<button class="eng-end-call-btn" data-record-id="${id}">End Call</button>`
+      : `<select class="eng-duration" title="Call duration">${durationOpts}</select>` +
+        `<button class="eng-call-btn eng-call-internal" data-record-id="${id}" data-action="internal">${ICON_INTERNAL} Internal Call</button>` +
+        `<button class="eng-call-btn eng-call-external" data-record-id="${id}" data-action="customer">${ICON_EXTERNAL} External Call</button>`;
+
+    const row2 =
+      `<div class="eng-card-footer">` +
+        `<span class="eng-card-status">${stageStatus}</span>` +
+        actions +
+      `</div>`;
+
+    return `<div class="eng-card" data-record-id="${id}">${row1}${row2}</div>`;
+  }
+
+  function renderEngagements(records: Record<string, unknown>[]): void {
+    engagementRecords = records;
+    applySearch();
+  }
+
+  function applySearch(): void {
+    const list = $('engList');
+    const count = $('engCount');
+    const searchEl = $('engSearch') as HTMLInputElement;
+    const clearBtn = $('engSearchClear') as HTMLButtonElement;
+    const query = searchEl.value.trim().toLowerCase();
+
+    clearBtn.hidden = query.length === 0;
+
+    if (engagementRecords.length === 0) {
+      list.innerHTML = '<div class="eng-empty">No engagements matched the filter.</div>';
+      count.textContent = '';
+      return;
+    }
+
+    const filtered = query
+      ? engagementRecords.filter((r) => {
+          const name = String(r['Name'] ?? '').toLowerCase();
+          const title = String(r['Title__c'] ?? '').toLowerCase();
+          return name.includes(query) || title.includes(query);
+        })
+      : engagementRecords;
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="eng-empty">No engagements match your search.</div>';
+      count.textContent = '';
+      return;
+    }
+
+    const total = engagementRecords.length;
+    count.textContent = query
+      ? `${filtered.length} of ${total} engagement${total === 1 ? '' : 's'}`
+      : `${total} engagement${total === 1 ? '' : 's'}`;
+    list.innerHTML = filtered.map(buildCardHtml).join('');
+  }
+
+  async function loadEngagements(): Promise<void> {
+    const list = $('engList');
+    list.innerHTML = '<div class="eng-empty">Loading…</div>';
+    $('engCount').textContent = '';
+    const result = await cadence.fetchEngagements();
+    if (result.ok) {
+      if (result.callDurations?.length) callDurationOptions = result.callDurations;
+      // Clear timers for records whose status changed away from scheduled externally.
+      const scheduledIds = (result.records as Record<string, unknown>[])
+        .filter((r) => String(r['Engagement_Status__c'] ?? '') === SCHEDULED_STATUS)
+        .map((r) => String(r['Id'] ?? ''));
+      void cadence.clearStaleTimers(scheduledIds);
+      renderEngagements(result.records);
+    } else {
+      list.innerHTML = `<div class="eng-empty">${escapeHtml(result.error ?? 'Failed to load engagements.')}</div>`;
+    }
+  }
+
+  $('refreshEngBtn').addEventListener('click', () => { void loadEngagements(); });
+
+  ($('engSearch') as HTMLInputElement).addEventListener('input', applySearch);
+  $('engSearchClear').addEventListener('click', () => {
+    ($('engSearch') as HTMLInputElement).value = '';
+    applySearch();
+    ($('engSearch') as HTMLInputElement).focus();
+  });
+
+  $('engList').addEventListener('click', async (e) => {
+    // Open-record icon — no loading state needed
+    const openBtn = (e.target as Element).closest<HTMLButtonElement>('[data-open]');
+    if (openBtn) {
+      void cadence.openRecord(openBtn.dataset.recordId!);
+      return;
+    }
+
+    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-action], .eng-end-call-btn');
+    if (!btn) return;
+
+    const recordId = btn.dataset.recordId!;
+    const actionType = btn.dataset.action as 'customer' | 'internal' | 'working' | undefined;
+
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = 'Saving…';
+
+    try {
+      if (actionType === 'customer' || actionType === 'internal') {
+        // Read selected duration from the dropdown in this card.
+        const card = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
+        const durationSelect = card?.querySelector<HTMLSelectElement>('.eng-duration');
+        const duration = durationSelect?.value ?? DEFAULT_DURATION;
+        const r = await cadence.callAction(recordId, actionType, duration);
+        if (r.ok) {
+          const idx = engagementRecords.findIndex((rec) => String(rec['Id']) === recordId);
+          if (idx !== -1) {
+            engagementRecords[idx] = { ...engagementRecords[idx], Engagement_Status__c: SCHEDULED_STATUS };
+            const cardEl = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
+            if (cardEl) cardEl.outerHTML = buildCardHtml(engagementRecords[idx]);
+          }
+          showToast(`Call scheduled — auto-ends in ${duration}`, 'success');
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          showToast(r.error ?? 'Action failed', 'error');
+        }
+      } else if (actionType === 'working') {
+        const idx = engagementRecords.findIndex((rec) => String(rec['Id']) === recordId);
+        const currentStatus = idx !== -1 ? String(engagementRecords[idx]['Engagement_Status__c'] ?? '') : '';
+        const r = await cadence.workingAction(recordId, currentStatus);
+        if (r.ok) {
+          if (idx !== -1 && r.newStatus) {
+            engagementRecords[idx] = { ...engagementRecords[idx], Engagement_Status__c: r.newStatus };
+            const card = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
+            if (card) card.outerHTML = buildCardHtml(engagementRecords[idx]);
+          }
+          const toastMsg = currentStatus === 'In Progress' ? 'Set to Waiting on Customer' : 'Marked as Working';
+          showToast(toastMsg, 'success');
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          showToast(r.error ?? 'Action failed', 'error');
+        }
+      } else {
+        // End Call
+        btn.innerHTML = 'Ending…';
+        const r = await cadence.endCall(recordId);
+        if (r.ok) {
+          showToast('Call ended', 'success');
+          void loadEngagements();
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          showToast(r.error ?? 'End call failed', 'error');
+        }
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+      showToast((err as Error).message, 'error');
+    }
+  });
+
   // ============ Tab switching ============
 
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((btn) => {
@@ -92,18 +313,17 @@
   // ============ State rendering ============
 
   function render(state: AppState): void {
-    const connStatus = $('connStatus');
-    const connStatusLabel = connStatus.querySelector('.status-label')!;
+    // Session line in header: show connected state or sign-in button
     if (state.isConnected) {
-      connStatus.classList.remove('disconnected');
-      connStatus.classList.add('connected');
-      connStatusLabel.textContent = 'Connected';
+      $('authConnected').hidden = false;
+      $('signInBtn').hidden = true;
+      $('authUsername').textContent = state.username ?? '';
     } else {
-      connStatus.classList.remove('connected');
-      connStatus.classList.add('disconnected');
-      connStatusLabel.textContent = 'Disconnected';
+      $('authConnected').hidden = true;
+      $('signInBtn').hidden = false;
     }
 
+    // Active pill + icon dim
     const pill = $('activeToggle');
     const pillLabel = pill.querySelector('.pill-label')!;
     const appIcon = $('appIcon');
@@ -126,31 +346,6 @@
     runNowBtn.disabled = !state.isConnected;
     runNowBtn.title = state.isConnected ? '' : 'Sign in first';
 
-    const connDot = $('connDot');
-    const connPrimary = $('connPrimary');
-    const connSecondary = $('connSecondary');
-    const signInBtn = $('signInBtn') as HTMLButtonElement;
-    const testConnBtn = $('testConnBtn') as HTMLButtonElement;
-    const resetBtn = $('resetBtn') as HTMLButtonElement;
-
-    if (state.isConnected) {
-      connDot.classList.add('connected');
-      connPrimary.textContent = `Connected as ${state.username}`;
-      connSecondary.textContent = state.orgDomain ?? '';
-      signInBtn.disabled = true;
-      signInBtn.textContent = 'Signed in';
-      testConnBtn.disabled = false;
-      resetBtn.disabled = false;
-    } else {
-      connDot.classList.remove('connected');
-      connPrimary.textContent = 'Not connected';
-      connSecondary.textContent = 'Sign in to authorize Salesforce access';
-      signInBtn.disabled = false;
-      signInBtn.textContent = 'Sign in to Salesforce';
-      testConnBtn.disabled = true;
-      resetBtn.disabled = true;
-    }
-
     // Launch-at-startup toggle
     const startupToggle = $('launchAtStartupToggle') as HTMLInputElement;
     const startupDesc = $('startupDesc');
@@ -160,7 +355,7 @@
       startupDesc.textContent = 'Launch at startup is not supported on this platform.';
     } else {
       startupDesc.textContent =
-        'Open Architect Cadence automatically when you log in. Starts hidden in the tray.';
+        'Open Architect Companion automatically when you log in. Starts hidden in the tray.';
     }
   }
 
@@ -175,35 +370,81 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
+  function buildLogEntryHtml(l: LogEntry, idx: number): string {
+    const dur = l.durationMs !== undefined ? ` <span class="dur">(${l.durationMs}ms)</span>` : '';
+    const hasIds = l.recordIds && l.recordIds.length > 0;
+    const disclosure = hasIds
+      ? ` <button class="ids-toggle" data-log-idx="${idx}" type="button">▸ Show ${l.recordIds!.length} ID${l.recordIds!.length === 1 ? '' : 's'}</button>` +
+        `<div class="ids-list" id="ids-${idx}" hidden>${l.recordIds!.map(escapeHtml).join(', ')}</div>`
+      : '';
+    return `<div class="log-entry ${l.level}"><span class="ts">[${formatTs(l.ts)}]</span>${escapeHtml(l.message)}${dur}${disclosure}</div>`;
+  }
+
+  function buildAccordion(
+    id: string,
+    title: string,
+    entries: LogEntry[],
+    startIdx: number,
+    open: boolean
+  ): string {
+    const body = entries.length === 0
+      ? '<div class="logs-empty">No logs in this window.</div>'
+      : entries.map((l, i) => buildLogEntryHtml(l, startIdx + i)).join('');
+    const badge = entries.length > 0 ? ` <span class="log-badge">${entries.length}</span>` : '';
+    return (
+      `<div class="log-accordion">` +
+        `<button class="accordion-header${open ? ' open' : ''}" data-accordion="${id}">` +
+          `<span class="accordion-arrow">${open ? '▾' : '▸'}</span>${escapeHtml(title)}${badge}` +
+        `</button>` +
+        `<div class="accordion-body" id="acc-${id}"${open ? '' : ' hidden'}>${body}</div>` +
+      `</div>`
+    );
+  }
+
+  function wireAccordions(container: HTMLElement): void {
+    container.querySelectorAll<HTMLButtonElement>('.accordion-header').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.accordion!;
+        const body = document.getElementById(`acc-${id}`) as HTMLElement;
+        const isOpen = !body.hidden;
+        body.hidden = isOpen;
+        btn.classList.toggle('open', !isOpen);
+        btn.querySelector<HTMLElement>('.accordion-arrow')!.textContent = isOpen ? '▸' : '▾';
+      });
+    });
+    container.querySelectorAll<HTMLButtonElement>('.ids-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.logIdx!);
+        const list = document.getElementById(`ids-${idx}`) as HTMLDivElement;
+        const isHidden = list.hidden;
+        list.hidden = !isHidden;
+        const count = (allLogs[idx].recordIds ?? []).length;
+        btn.textContent = `${isHidden ? '▾' : '▸'} ${isHidden ? 'Hide' : 'Show'} ${count} ID${count === 1 ? '' : 's'}`;
+      });
+    });
+  }
+
   function renderLogs(): void {
     const container = $('logs');
     if (allLogs.length === 0) {
       container.innerHTML = '<div class="logs-empty">No logs yet.</div>';
       return;
     }
-    container.innerHTML = allLogs
-      .map((l, idx) => {
-        const dur = l.durationMs !== undefined ? ` <span class="dur">(${l.durationMs}ms)</span>` : '';
-        const hasIds = l.recordIds && l.recordIds.length > 0;
-        const disclosure = hasIds
-          ? ` <button class="ids-toggle" data-log-idx="${idx}" type="button">▸ Show ${l.recordIds!.length} ID${l.recordIds!.length === 1 ? '' : 's'}</button>` +
-            `<div class="ids-list" id="ids-${idx}" hidden>${l.recordIds!.map(escapeHtml).join(', ')}</div>`
-          : '';
-        return `<div class="log-entry ${l.level}"><span class="ts">[${formatTs(l.ts)}]</span>${escapeHtml(l.message)}${dur}${disclosure}</div>`;
-      })
-      .join('');
 
-    // Wire toggle buttons (delegated would also work; explicit is simpler here).
-    container.querySelectorAll<HTMLButtonElement>('.ids-toggle').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const idx = btn.dataset.logIdx!;
-        const list = document.getElementById(`ids-${idx}`) as HTMLDivElement;
-        const isHidden = list.hidden;
-        list.hidden = !isHidden;
-        const count = (allLogs[Number(idx)].recordIds ?? []).length;
-        btn.textContent = `${isHidden ? '▾' : '▸'} ${isHidden ? 'Hide' : 'Show'} ${count} ID${count === 1 ? '' : 's'}`;
-      });
-    });
+    const engLogs = allLogs.filter((l) => l.source === 'engagements');
+    // Entries with no source are legacy scheduler logs written before source field was added.
+    const schedLogs = allLogs.filter((l) => l.source === 'scheduler' || !l.source);
+
+    // Build both accordions; engagement entries are indexed 0..n-1, scheduler n..n+m-1
+    // so ids-N references are globally unique across the full allLogs array.
+    const engStartIdx = 0;
+    const schedStartIdx = engLogs.length;
+
+    container.innerHTML =
+      buildAccordion('engagements', 'Engagement View Logs', engLogs, engStartIdx, true) +
+      buildAccordion('scheduler', 'Daily Scheduler Logs', schedLogs, schedStartIdx, true);
+
+    wireAccordions(container);
   }
 
   async function refreshLogsFromMain(): Promise<void> {
@@ -297,41 +538,38 @@
     }
   });
 
+  $('signOutBtn').addEventListener('click', async () => {
+    if (!confirm('Sign out? You will need to sign in again to run updates.')) return;
+    const r = await cadence.resetConnection();
+    if (r.ok) {
+      render(r.state);
+      showToast('Signed out', 'info');
+    }
+  });
+
   $('signInBtn').addEventListener('click', async () => {
-    const signInBtn = $('signInBtn') as HTMLButtonElement;
-    const originalText = signInBtn.textContent;
-    signInBtn.disabled = true;
-    signInBtn.textContent = 'Waiting for browser…';
+    const btn = $('signInBtn') as HTMLButtonElement;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Waiting for browser…';
     try {
       const r = await cadence.signIn();
       if (r.ok) {
         render(r.state);
         showToast(`Signed in as ${r.state.username}`, 'success');
+        void loadEngagements();
       } else {
         showToast(r.message ?? 'Sign-in failed', 'error');
-        signInBtn.disabled = false;
-        signInBtn.textContent = originalText;
+        btn.disabled = false;
+        btn.textContent = orig;
       }
     } catch (err) {
       showToast((err as Error).message, 'error');
-      signInBtn.disabled = false;
-      signInBtn.textContent = originalText;
+      btn.disabled = false;
+      btn.textContent = orig;
     }
   });
 
-  $('resetBtn').addEventListener('click', async () => {
-    if (!confirm('Reset connection? You will need to sign in again to run updates.')) return;
-    const r = await cadence.resetConnection();
-    if (r.ok) {
-      render(r.state);
-      showToast('Connection reset');
-    }
-  });
-
-  $('testConnBtn').addEventListener('click', async () => {
-    const r = await cadence.testConnection();
-    showToast(r.message ?? (r.ok ? 'OK' : 'Failed'), r.ok ? 'success' : 'error');
-  });
 
   // --- Config editor ---
 
@@ -414,17 +652,35 @@
 
   // ============ Subscriptions ============
 
-  cadence.onStateChanged((state) => render(state));
+  let wasConnected = false;
+  cadence.onStateChanged((state) => {
+    render(state);
+    if (state.isConnected && !wasConnected) {
+      void loadEngagements();
+    }
+    wasConnected = state.isConnected;
+  });
   cadence.onTrayRunNow(() => {
     // Tray-initiated runs result in a log:append from main.
   });
-  cadence.onLogAppend((_entry) => {
-    void refreshLogsFromMain();
+  cadence.onLogAppend((entry) => {
+    // Insert newest-first (same order as readLogs returns).
+    allLogs = [entry, ...allLogs];
+    renderLogs();
+  });
+  cadence.onAutoEndCall(({ recordId, newStatus }) => {
+    const idx = engagementRecords.findIndex((r) => String(r['Id']) === recordId);
+    if (idx !== -1) {
+      engagementRecords[idx] = { ...engagementRecords[idx], Engagement_Status__c: newStatus };
+      const card = $('engList').querySelector<HTMLElement>(`[data-record-id="${CSS.escape(recordId)}"]`);
+      if (card) card.outerHTML = buildCardHtml(engagementRecords[idx]);
+    }
   });
 
   // ============ Boot ============
 
   cadence.getState().then(render);
+  void loadEngagements();
   void refreshLogsFromMain();
   void loadConfigEditor();
   void cadence.getPaths().then((p) => {

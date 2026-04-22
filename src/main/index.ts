@@ -19,11 +19,11 @@ import {
   installSession,
   isSignedIn,
 } from './session';
-import { createSalesforceClient } from './salesforce-client';
+import { createSalesforceClient, SalesforceApiError, scrubTokens } from './salesforce-client';
 import { runJob, RunResult } from './job-runner';
-import { appendLog, clearLogs, getLogPath, LogEntry, LogWindow, readLogs } from './log-store';
+import { appendLog, clearLogs, getLogPath, LogEntry, LogLevel, LogSource, LogWindow, readLogs } from './log-store';
 import { randomUUID } from 'crypto';
-import { validateConfig } from '../shared';
+import { buildEngagementsSOQL, validateConfig } from '../shared';
 import { isFirstLaunch, loadPrefs, savePrefs, isValidTime } from './prefs-store';
 import { createScheduler, Scheduler } from './scheduler';
 import { notifyScheduledRun } from './notifications';
@@ -34,7 +34,7 @@ import { getStartupStatus, isStartupSupported, setStartupEnabled, wasAutoLaunche
 // the generic Electron binary. Without this, the taskbar always shows the
 // Electron icon regardless of the BrowserWindow icon option.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.architectcadence.app');
+  app.setAppUserModelId('com.architectcompanion.app');
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -156,28 +156,34 @@ function createWindow(showOnReady: boolean): void {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
-  // Tie the macOS Dock icon to window visibility. When the window is shown,
-  // show the Dock icon; when hidden, remove the Dock icon entirely.
-  mainWindow.on('show', () => setDockVisible(true));
-  mainWindow.on('hide', () => setDockVisible(false));
+  // On macOS: keep the dock icon always visible. Close button closes the window
+  // (standard macOS app behavior) — the app stays alive in the dock with no
+  // open windows. Clicking the dock icon re-opens the window.
+  // On Windows/Linux: retain the old hide-to-tray behavior.
+  if (process.platform === 'darwin') {
+    setDockVisible(true);
+  } else {
+    mainWindow.on('show', () => setDockVisible(true));
+    mainWindow.on('hide', () => setDockVisible(false));
+  }
 
   // Show the window only once it's painted — avoids a white flash on first paint.
-  // If we were told to stay hidden (auto-launch), skip the show entirely; the
-  // user will click the tray icon or "Show Window" menu item when they want it.
   if (showOnReady) {
     mainWindow.once('ready-to-show', () => {
       mainWindow?.show();
     });
-  } else {
-    // We're not showing the window at launch — make sure the Dock reflects that.
+  } else if (process.platform !== 'darwin') {
     setDockVisible(false);
   }
 
   mainWindow.on('close', (e) => {
-    if (!(app as any).isQuitting) {
+    if ((app as any).isQuitting) return; // full quit — let it close
+    if (process.platform !== 'darwin') {
+      // Windows/Linux: hide to tray instead of closing.
       e.preventDefault();
       mainWindow?.hide();
     }
+    // macOS: let the window close naturally; app stays alive in dock.
   });
 
   if (process.argv.includes('--dev')) {
@@ -207,7 +213,7 @@ function createTray(): void {
   }
 
   tray = new Tray(icon);
-  tray.setToolTip('Architect Cadence');
+  tray.setToolTip('Architect Companion');
   updateTrayMenu();
 
   // Left-click pops up the same menu as right-click. This removes the old
@@ -247,25 +253,42 @@ function updateTrayMenu(): void {
   tray.setContextMenu(menu);
 }
 
-// Persist a completed run to disk + push it to the renderer's log panel.
-function recordRun(result: RunResult): void {
-  const entry: LogEntry = {
-    ts: new Date().toISOString(),
-    level: result.ok ? 'success' : 'error',
-    message: `${result.ok ? '✓' : '✗'} ${result.message}`,
-    durationMs: result.durationMs,
-    matchedCount: result.matchedCount,
-    updatedCount: result.updatedCount,
-    failedCount: result.failedCount,
-    recordIds: result.recordIds.length > 0 ? result.recordIds : undefined,
-    runId: randomUUID(),
-  };
+function pushLog(entry: LogEntry): void {
   try {
     appendLog(entry);
   } catch (err) {
     console.error(`[log] Failed to persist log entry: ${(err as Error).message}`);
   }
   mainWindow?.webContents.send('log:append', entry);
+}
+
+// Persist a completed scheduler run to disk + push it to the renderer's log panel.
+function recordRun(result: RunResult, runId: string): void {
+  const entry: LogEntry = {
+    ts: new Date().toISOString(),
+    level: result.ok ? 'success' : 'error',
+    message: `${result.ok ? '✓' : '✗'} ${result.message}`,
+    source: 'scheduler',
+    durationMs: result.durationMs,
+    matchedCount: result.matchedCount,
+    updatedCount: result.updatedCount,
+    failedCount: result.failedCount,
+    recordIds: result.recordIds.length > 0 ? result.recordIds : undefined,
+    runId,
+  };
+  pushLog(entry);
+}
+
+// Emit a scheduler step log (query, update, warn, etc.) with the run's runId for grouping.
+function logScheduler(level: LogLevel, message: string, runId: string): void {
+  pushLog({ ts: new Date().toISOString(), level, message, source: 'scheduler', runId });
+}
+
+// Emit an engagement operation log.
+function logEng(level: LogLevel, message: string, runId?: string): void {
+  const entry: LogEntry = { ts: new Date().toISOString(), level, message, source: 'engagements' };
+  if (runId) entry.runId = runId;
+  pushLog(entry);
 }
 
 // ============ IPC ============
@@ -320,12 +343,13 @@ ipcMain.handle('state:set-launch-at-startup', (_e, enabled: boolean) => {
 // --- Module 4: real Run Now ---
 
 ipcMain.handle('action:run-now', async () => {
-  const result = await executeJob();
-  recordRun(result);
+  const runId = randomUUID();
+  const result = await executeJob(runId);
+  recordRun(result, runId);
   return { ok: result.ok, message: result.message };
 });
 
-async function executeJob(): Promise<RunResult> {
+async function executeJob(runId: string): Promise<RunResult> {
   if (!isSignedIn()) {
     return {
       ok: false,
@@ -364,6 +388,7 @@ async function executeJob(): Promise<RunResult> {
     isActive: state.isActive,
     client,
     currentUserId: meta.userId,
+    log: (level, message) => logScheduler(level, message, runId),
   });
 }
 
@@ -454,6 +479,260 @@ ipcMain.handle('config:save', (_e, rawText: string) => {
   return { ok: true, formatted: result.formatted, message: 'Config saved' };
 });
 
+// --- Engagements tab ---
+
+ipcMain.handle('engagements:fetch', async () => {
+  if (!isSignedIn()) return { ok: false, error: 'Not signed in', records: [] };
+
+  const configResult = loadJobConfig();
+  if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}`, records: [] };
+
+  const config = configResult.config;
+  if (!config.engagementsView) return { ok: false, error: 'engagementsView not configured', records: [] };
+
+  try {
+    const meta = getMetadata()!;
+    const client = createSalesforceClient({
+      instanceUrl: meta.instanceUrl,
+      apiVersion: config.apiVersion,
+      getAccessToken: () => getAccessToken(),
+      forceRefresh: () => forceRefresh(),
+    });
+    const { soql } = buildEngagementsSOQL(config, { currentUserId: meta.userId });
+    logEng('info', `Fetching engagements — Query: ${soql}`);
+    const result = await client.query(soql);
+    logEng('info', `Fetched ${result.records.length} engagement(s).`);
+    const callDurations = config.engagementsView!.callDurations ?? ['30s', '1m', '5m', '15m', '30m', '45m', '1h'];
+    return { ok: true, records: result.records, callDurations };
+  } catch (err) {
+    const msg = scrubTokens((err as Error).message ?? 'Unknown error');
+    logEng('error', `Engagements fetch failed: ${msg}`);
+    return { ok: false, error: msg, records: [] };
+  }
+});
+
+// --- Engagement call timers ---
+
+const callTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function parseDurationMs(d: string): number {
+  const trimmed = d.trim();
+  if (/^\d+s$/.test(trimmed)) return parseInt(trimmed) * 1000;
+  if (/^\d+m$/.test(trimmed)) return parseInt(trimmed) * 60 * 1000;
+  if (/^\d+h$/.test(trimmed)) return parseInt(trimmed) * 60 * 60 * 1000;
+  return 60 * 60 * 1000; // fallback: 1h
+}
+
+function clearCallTimer(recordId: string): boolean {
+  const t = callTimers.get(recordId);
+  if (t !== undefined) {
+    clearTimeout(t);
+    callTimers.delete(recordId);
+    return true;
+  }
+  return false;
+}
+
+function startCallTimer(recordId: string, durationMs: number, config: import('../shared').JobConfig): void {
+  clearCallTimer(recordId);
+  const timer = setTimeout(async () => {
+    callTimers.delete(recordId);
+    const endCallAction = config.engagementsView?.endCallAction;
+    if (!endCallAction || !isSignedIn()) return;
+    const runId = randomUUID();
+    const durationLabel = `${Math.round(durationMs / 1000)}s`;
+    logEng('info', `Auto-revert timer fired for record ${recordId} after ${durationLabel}.`, runId);
+    try {
+      const meta = getMetadata()!;
+      const client = createSalesforceClient({
+        instanceUrl: meta.instanceUrl,
+        apiVersion: config.apiVersion,
+        getAccessToken: () => getAccessToken(),
+        forceRefresh: () => forceRefresh(),
+      });
+      const payload: Record<string, unknown> = { Id: recordId };
+      for (const uf of endCallAction.updateFields) payload[uf.field] = uf.value;
+      const fields = endCallAction.updateFields.map((f) => `${f.field}=${JSON.stringify(f.value)}`).join(', ');
+      logEng('info', `Auto-reverting ${config.object} ${recordId}: ${fields}`, runId);
+      await client.updateRecords(config.object, [payload as { Id: string; [k: string]: unknown }]);
+      const newStatus = endCallAction.updateFields.find(f => f.field === 'Engagement_Status__c')?.value ?? '';
+      logEng('success', `Auto-revert complete — status set to "${newStatus}" for ${recordId}.`, runId);
+      mainWindow?.webContents.send('engagements:auto-end-call', { recordId, newStatus });
+    } catch (err) {
+      const msg = scrubTokens((err as Error).message ?? 'Unknown error');
+      logEng('error', `Auto-revert failed for ${recordId}: ${msg}`, runId);
+      console.error('[timer] auto end-call failed:', msg);
+    }
+  }, durationMs);
+  callTimers.set(recordId, timer);
+}
+
+// --- Engagement card call actions ---
+
+ipcMain.handle('engagements:call-action', async (_e, { recordId, actionType, duration }: { recordId: string; actionType: 'customer' | 'internal'; duration: string }) => {
+  if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
+
+  const configResult = loadJobConfig();
+  if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}` };
+
+  const config = configResult.config;
+  const ev = config.engagementsView;
+  const action = actionType === 'customer' ? ev?.customerCallAction : ev?.internalCallAction;
+  if (!action) return { ok: false, error: `${actionType}CallAction not configured` };
+
+  const label = actionType === 'customer' ? 'External Call' : 'Internal Call';
+  const runId = randomUUID();
+  logEng('info', `${label} action on record ${recordId} (duration: ${duration})`, runId);
+
+  try {
+    const meta = getMetadata()!;
+    const client = createSalesforceClient({
+      instanceUrl: meta.instanceUrl,
+      apiVersion: config.apiVersion,
+      getAccessToken: () => getAccessToken(),
+      forceRefresh: () => forceRefresh(),
+    });
+
+    // Step 1: patch the Engagement record
+    const updatePayload: Record<string, unknown> = { Id: recordId };
+    for (const uf of action.updateFields) updatePayload[uf.field] = uf.value;
+    const fields = action.updateFields.map((f) => `${f.field}=${JSON.stringify(f.value)}`).join(', ');
+    logEng('info', `Patching ${config.object} ${recordId}: ${fields}`, runId);
+    await client.updateRecords(config.object, [updatePayload as { Id: string; [k: string]: unknown }]);
+    logEng('success', `${config.object} ${recordId} updated successfully.`, runId);
+
+    // Step 2: create each child record, substituting {recordId}
+    for (const cr of action.createRecords) {
+      const recFields: Record<string, unknown> = {};
+      for (const f of cr.fields) {
+        recFields[f.field] = f.value === '{recordId}' ? recordId : f.value;
+      }
+      logEng('info', `Creating ${cr.object} record for engagement ${recordId}.`, runId);
+      await client.createRecord(cr.object, recFields);
+      logEng('success', `${cr.object} record created.`, runId);
+    }
+
+    // Step 3: start auto-revert timer
+    startCallTimer(recordId, parseDurationMs(duration), config);
+    logEng('info', `Auto-revert timer started — will revert status after ${duration}.`, runId);
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof SalesforceApiError
+      ? `[${err.errorCode}] ${err.message}`
+      : scrubTokens((err as Error).message ?? 'Unknown error');
+    logEng('error', `${label} action failed: ${msg}`, runId);
+    return { ok: false, error: msg };
+  }
+});
+
+ipcMain.handle('engagements:open-record', async (_e, { recordId }: { recordId: string }) => {
+  if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
+  const configResult = loadJobConfig();
+  if (!configResult.ok) return { ok: false, error: 'Config invalid' };
+  const meta = getMetadata()!;
+  const url = `${meta.instanceUrl}/lightning/r/${configResult.config.object}/${recordId}/view`;
+  await shell.openExternal(url);
+  return { ok: true };
+});
+
+ipcMain.handle('engagements:working-action', async (
+  _e,
+  { recordId, currentStatus }: { recordId: string; currentStatus: string }
+) => {
+  if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
+  const configResult = loadJobConfig();
+  if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}` };
+  const config = configResult.config;
+
+  // Toggle: currently In Progress → revert via endCallAction; otherwise → set via workingAction.
+  const isInProgress = currentStatus === 'In Progress';
+  const ev = config.engagementsView;
+  const action = isInProgress ? ev?.endCallAction : ev?.workingAction;
+  const actionName = isInProgress ? 'endCallAction' : 'workingAction';
+  if (!action) return { ok: false, error: `${actionName} not configured` };
+
+  const direction = isInProgress ? 'In Progress → Waiting on Customer' : `${currentStatus} → In Progress`;
+  const runId = randomUUID();
+  logEng('info', `Working toggle on ${recordId}: ${direction}`, runId);
+
+  try {
+    const meta = getMetadata()!;
+    const client = createSalesforceClient({
+      instanceUrl: meta.instanceUrl,
+      apiVersion: config.apiVersion,
+      getAccessToken: () => getAccessToken(),
+      forceRefresh: () => forceRefresh(),
+    });
+    const payload: Record<string, unknown> = { Id: recordId };
+    for (const uf of action.updateFields) payload[uf.field] = uf.value;
+    const fields = action.updateFields.map((f) => `${f.field}=${JSON.stringify(f.value)}`).join(', ');
+    logEng('info', `Patching ${config.object} ${recordId}: ${fields}`, runId);
+    await client.updateRecords(config.object, [payload as { Id: string; [k: string]: unknown }]);
+    // Return the new status so the renderer can update in-memory without a refetch.
+    const newStatus = action.updateFields.find(f => f.field === 'Engagement_Status__c')?.value ?? '';
+    logEng('success', `Status updated to "${newStatus}".`, runId);
+    return { ok: true, newStatus };
+  } catch (err) {
+    const msg = err instanceof SalesforceApiError
+      ? `[${err.errorCode}] ${err.message}`
+      : scrubTokens((err as Error).message ?? 'Unknown error');
+    logEng('error', `Working toggle failed: ${msg}`, runId);
+    return { ok: false, error: msg };
+  }
+});
+
+ipcMain.handle('engagements:end-call', async (_e, { recordId }: { recordId: string }) => {
+  if (!isSignedIn()) return { ok: false, error: 'Not signed in' };
+
+  const configResult = loadJobConfig();
+  if (!configResult.ok) return { ok: false, error: `Config invalid: ${configResult.errors.join('; ')}` };
+
+  const config = configResult.config;
+  const endCallAction = config.engagementsView?.endCallAction;
+  if (!endCallAction) return { ok: false, error: 'endCallAction not configured' };
+
+  // Cancel any running auto-revert timer for this record.
+  const runId = randomUUID();
+  const hadTimer = clearCallTimer(recordId);
+  if (hadTimer) logEng('info', `Auto-revert timer cancelled for record ${recordId} (manual End Call).`, runId);
+  logEng('info', `End call (manual) on record ${recordId}.`, runId);
+
+  try {
+    const meta = getMetadata()!;
+    const client = createSalesforceClient({
+      instanceUrl: meta.instanceUrl,
+      apiVersion: config.apiVersion,
+      getAccessToken: () => getAccessToken(),
+      forceRefresh: () => forceRefresh(),
+    });
+
+    const updatePayload: Record<string, unknown> = { Id: recordId };
+    for (const uf of endCallAction.updateFields) updatePayload[uf.field] = uf.value;
+    const fields = endCallAction.updateFields.map((f) => `${f.field}=${JSON.stringify(f.value)}`).join(', ');
+    logEng('info', `Patching ${config.object} ${recordId}: ${fields}`, runId);
+    await client.updateRecords(config.object, [updatePayload as { Id: string; [k: string]: unknown }]);
+    logEng('success', `End call completed — status reverted for ${recordId}.`, runId);
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof SalesforceApiError
+      ? `[${err.errorCode}] ${err.message}`
+      : scrubTokens((err as Error).message ?? 'Unknown error');
+    logEng('error', `End call failed: ${msg}`, runId);
+    return { ok: false, error: msg };
+  }
+});
+
+// Clear timers for records that no longer have Call/Meeting Scheduled status (e.g. changed externally).
+ipcMain.handle('engagements:clear-stale-timers', (_e, { scheduledIds }: { scheduledIds: string[] }) => {
+  const scheduled = new Set(scheduledIds);
+  for (const id of Array.from(callTimers.keys())) {
+    if (!scheduled.has(id)) clearCallTimer(id);
+  }
+  return { ok: true };
+});
+
 // --- Paths (About tab) ---
 
 ipcMain.handle('paths:get', () => {
@@ -541,8 +820,9 @@ app.whenReady().then(() => {
     scheduledTime: state.scheduledTime,
     active: state.isActive,
     onTick: async () => {
-      const result = await executeJob();
-      recordRun(result);
+      const runId = randomUUID();
+      const result = await executeJob(runId);
+      recordRun(result, runId);
       notifyScheduledRun(result, { getMainWindow: () => mainWindow });
     },
   });
@@ -566,21 +846,25 @@ app.whenReady().then(() => {
     `[launch] firstLaunch=${firstLaunch}, autoLaunched=${autoLaunched}, shouldShowWindow=${shouldShowWindow}`
   );
 
-  // If we're starting hidden, hide the Dock icon as early as possible so it
-  // doesn't flash visible during window creation.
-  if (!shouldShowWindow) {
+  // On macOS the dock icon stays visible at all times (standard app behavior).
+  // On other platforms, hide the dock before creating the window if auto-launching.
+  if (process.platform !== 'darwin' && !shouldShowWindow) {
     setDockVisible(false);
   }
 
   createWindow(shouldShowWindow);
   createTray();
 
-  // On macOS, clicking the dock icon or re-opening the app → show the window.
+  // On macOS, clicking the dock icon re-opens or focuses the window.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow(true);
+    } else if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    } else if (!mainWindow.isVisible()) {
+      mainWindow.show();
     } else {
-      mainWindow?.show();
+      mainWindow.focus();
     }
   });
 });

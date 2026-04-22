@@ -37,6 +37,12 @@ export interface UpdateOutcome {
   errors: Array<{ statusCode: string; message: string; fields?: string[] }>;
 }
 
+export interface CreateOutcome {
+  id: string;
+  success: boolean;
+  errors: Array<{ statusCode: string; message: string }>;
+}
+
 export interface SalesforceClient {
   /** Execute a SOQL query. */
   query<T extends QueryRecord = QueryRecord>(soql: string): Promise<QueryResult<T>>;
@@ -49,6 +55,12 @@ export interface SalesforceClient {
     object: string,
     records: Array<{ Id: string; [field: string]: unknown }>
   ): Promise<UpdateOutcome[]>;
+
+  /** Create a single record via POST /sobjects/{object}. */
+  createRecord(
+    object: string,
+    fields: Record<string, unknown>
+  ): Promise<CreateOutcome>;
 }
 
 export interface CreateClientOptions {
@@ -99,6 +111,12 @@ export function createSalesforceClient(options: CreateClientOptions): Salesforce
         throw await parseApiError(response);
       }
       return (await response.json()) as QueryResult<T>;
+    },
+
+    async createRecord(object, fields): Promise<CreateOutcome> {
+      const response = await doFetch('POST', `/sobjects/${encodeURIComponent(object)}`, fields);
+      if (!response.ok) throw await parseApiError(response);
+      return (await response.json()) as CreateOutcome;
     },
 
     async updateRecords(object, records): Promise<UpdateOutcome[]> {

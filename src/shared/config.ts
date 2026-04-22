@@ -4,10 +4,18 @@
 
 import * as fs from 'fs';
 import {
+  ActionField,
+  CallAction,
   Condition,
+  CreateRecordConfig,
+  EngagementsQuery,
+  EngagementsViewConfig,
+  Filters,
   JobConfig,
   Operator,
+  SimpleAction,
   SUPPORTED_OPERATORS,
+  UpdateField,
   ValidationResult,
 } from './types';
 import { parseLogic, collectIndices, LogicParseError } from './logic-parser';
@@ -72,14 +80,22 @@ export function validateConfig(input: unknown): ValidationResult {
     }
   }
 
-  // filters
-  const filters = validateFilters((input as Record<string, unknown>).filters, errors);
+  // dailySchedule
+  const rawSchedule = (input as Record<string, unknown>).dailySchedule;
+  if (!isObject(rawSchedule)) {
+    errors.push(`'dailySchedule' is required and must be an object.`);
+  }
 
-  // updateFields
-  const updateFields = validateUpdateFields(
-    (input as Record<string, unknown>).updateFields,
-    errors
-  );
+  const scheduleObj = isObject(rawSchedule) ? rawSchedule : {};
+  const filters = validateFilters(scheduleObj.filters, errors);
+  const updateFields = validateUpdateFields(scheduleObj.updateFields, errors);
+
+  // engagementsView (optional) — includes all card button action configs
+  let engagementsView: EngagementsViewConfig | undefined;
+  if ('engagementsView' in input) {
+    const rawEv = (input as Record<string, unknown>).engagementsView;
+    engagementsView = validateEngagementsView(rawEv, errors) ?? undefined;
+  }
 
   if (errors.length > 0) {
     return { ok: false, errors };
@@ -92,12 +108,12 @@ export function validateConfig(input: unknown): ValidationResult {
     object: object!,
     ownerFieldName: ownerFieldName!,
     maxRecords: maxRecords!,
-    filters: filters!,
-    updateFields: updateFields!,
+    dailySchedule: { filters: filters!, updateFields: updateFields! },
   };
   if ('logLevel' in input) {
     config.logLevel = (input as { logLevel: JobConfig['logLevel'] }).logLevel;
   }
+  if (engagementsView) config.engagementsView = engagementsView;
   return { ok: true, config };
 }
 
@@ -106,9 +122,9 @@ export function validateConfig(input: unknown): ValidationResult {
 function validateFilters(
   input: unknown,
   errors: string[]
-): JobConfig['filters'] | null {
+): Filters | null {
   if (!isObject(input)) {
-    errors.push(`'filters' is required and must be an object.`);
+    errors.push(`'dailySchedule.filters' is required and must be an object.`);
     return null;
   }
 
@@ -116,11 +132,11 @@ function validateFilters(
   const logicRaw = (input as Record<string, unknown>).logic;
 
   if (!Array.isArray(conditionsRaw) || conditionsRaw.length === 0) {
-    errors.push(`'filters.conditions' must be a non-empty array.`);
+    errors.push(`'dailySchedule.filters.conditions' must be a non-empty array.`);
   }
 
   if (typeof logicRaw !== 'string' || logicRaw.trim().length === 0) {
-    errors.push(`'filters.logic' must be a non-empty string.`);
+    errors.push(`'dailySchedule.filters.logic' must be a non-empty string.`);
   }
 
   const conditions: Condition[] = [];
@@ -145,9 +161,9 @@ function validateFilters(
       }
     } catch (err) {
       if (err instanceof LogicParseError) {
-        errors.push(`'filters.logic' is malformed: ${err.message}`);
+        errors.push(`'dailySchedule.filters.logic' is malformed: ${err.message}`);
       } else {
-        errors.push(`'filters.logic' could not be parsed: ${(err as Error).message}`);
+        errors.push(`'dailySchedule.filters.logic' could not be parsed: ${(err as Error).message}`);
       }
     }
   }
@@ -162,7 +178,7 @@ function validateCondition(
   index: number,
   errors: string[]
 ): Condition | null {
-  const prefix = `filters.conditions[${index}]`;
+  const prefix = `dailySchedule.filters.conditions[${index}]`;
   if (!isObject(input)) {
     errors.push(`${prefix} must be an object.`);
     return null;
@@ -225,15 +241,15 @@ function validateCondition(
 function validateUpdateFields(
   input: unknown,
   errors: string[]
-): JobConfig['updateFields'] | null {
+): UpdateField[] | null {
   if (!Array.isArray(input) || input.length === 0) {
-    errors.push(`'updateFields' must be a non-empty array.`);
+    errors.push(`'dailySchedule.updateFields' must be a non-empty array.`);
     return null;
   }
 
-  const result: JobConfig['updateFields'] = [];
+  const result: UpdateField[] = [];
   input.forEach((item, i) => {
-    const prefix = `updateFields[${i}]`;
+    const prefix = `dailySchedule.updateFields[${i}]`;
     if (!isObject(item)) {
       errors.push(`${prefix} must be an object.`);
       return;
@@ -254,6 +270,254 @@ function validateUpdateFields(
 
   if (errors.length > 0) return null;
   return result;
+}
+
+function validateSimpleAction(
+  input: unknown,
+  key: string,
+  errors: string[]
+): SimpleAction | null {
+  if (!isObject(input)) {
+    errors.push(`'${key}' must be an object.`);
+    return null;
+  }
+  const fields = validateCallActionUpdateFields(
+    (input as Record<string, unknown>).updateFields, key, errors
+  );
+  if (!fields) return null;
+  return { updateFields: fields };
+}
+
+function validateCallAction(
+  input: unknown,
+  key: string,
+  errors: string[]
+): CallAction | null {
+  if (!isObject(input)) {
+    errors.push(`'${key}' must be an object.`);
+    return null;
+  }
+
+  const updateFields = validateCallActionUpdateFields(
+    (input as Record<string, unknown>).updateFields, key, errors
+  );
+
+  const rawCreate = (input as Record<string, unknown>).createRecords;
+  const createRecords = validateCreateRecords(rawCreate, key, errors);
+
+  if (errors.length > 0) return null;
+  return { updateFields: updateFields!, createRecords: createRecords! };
+}
+
+function validateCallActionUpdateFields(
+  input: unknown,
+  key: string,
+  errors: string[]
+): UpdateField[] | null {
+  if (!Array.isArray(input) || input.length === 0) {
+    errors.push(`'${key}.updateFields' must be a non-empty array.`);
+    return null;
+  }
+  const result: UpdateField[] = [];
+  input.forEach((item, i) => {
+    const prefix = `${key}.updateFields[${i}]`;
+    if (!isObject(item)) { errors.push(`${prefix} must be an object.`); return; }
+    const field = (item as Record<string, unknown>).field;
+    const value = (item as Record<string, unknown>).value;
+    if (typeof field !== 'string' || field.trim().length === 0) {
+      errors.push(`${prefix}.field must be a non-empty string.`); return;
+    }
+    if (!isScalar(value)) {
+      errors.push(`${prefix}.value must be a string, number, boolean, or null.`); return;
+    }
+    result.push({ field, value: value as any });
+  });
+  return result.length > 0 ? result : null;
+}
+
+function validateCreateRecords(
+  input: unknown,
+  key: string,
+  errors: string[]
+): CreateRecordConfig[] | null {
+  if (!Array.isArray(input) || input.length === 0) {
+    errors.push(`'${key}.createRecords' must be a non-empty array.`);
+    return null;
+  }
+  const result: CreateRecordConfig[] = [];
+  input.forEach((item, i) => {
+    const prefix = `${key}.createRecords[${i}]`;
+    if (!isObject(item)) { errors.push(`${prefix} must be an object.`); return; }
+    const object = (item as Record<string, unknown>).object;
+    const fields = (item as Record<string, unknown>).fields;
+    if (typeof object !== 'string' || object.trim().length === 0) {
+      errors.push(`${prefix}.object must be a non-empty string.`); return;
+    }
+    if (!Array.isArray(fields) || fields.length === 0) {
+      errors.push(`${prefix}.fields must be a non-empty array.`); return;
+    }
+    const parsedFields: ActionField[] = [];
+    (fields as unknown[]).forEach((f, j) => {
+      const fp = `${prefix}.fields[${j}]`;
+      if (!isObject(f)) { errors.push(`${fp} must be an object.`); return; }
+      const fField = (f as Record<string, unknown>).field;
+      const fValue = (f as Record<string, unknown>).value;
+      if (typeof fField !== 'string' || fField.trim().length === 0) {
+        errors.push(`${fp}.field must be a non-empty string.`); return;
+      }
+      if (typeof fValue !== 'string') {
+        errors.push(`${fp}.value must be a string.`); return;
+      }
+      parsedFields.push({ field: fField, value: fValue });
+    });
+    result.push({ object: object.trim(), fields: parsedFields });
+  });
+  return result.length > 0 ? result : null;
+}
+
+function validateEngagementsView(
+  input: unknown,
+  errors: string[]
+): EngagementsViewConfig | null {
+  if (!isObject(input)) {
+    errors.push(`'engagementsView' must be an object.`);
+    return null;
+  }
+
+  const queryRaw = (input as Record<string, unknown>).query;
+  if (!isObject(queryRaw)) {
+    errors.push(`'engagementsView.query' is required and must be an object.`);
+    return null;
+  }
+
+  const q = queryRaw as Record<string, unknown>;
+
+  if (!Array.isArray(q.fields) || q.fields.length === 0) {
+    errors.push(`'engagementsView.query.fields' must be a non-empty array.`);
+  } else {
+    for (let i = 0; i < q.fields.length; i++) {
+      if (typeof q.fields[i] !== 'string' || (q.fields[i] as string).trim().length === 0) {
+        errors.push(`'engagementsView.query.fields[${i}]' must be a non-empty string.`);
+      }
+    }
+  }
+
+  if (!Array.isArray(q.conditions) || q.conditions.length === 0) {
+    errors.push(`'engagementsView.query.conditions' must be a non-empty array.`);
+  }
+
+  if (typeof q.logic !== 'string' || q.logic.trim().length === 0) {
+    errors.push(`'engagementsView.query.logic' must be a non-empty string.`);
+  }
+
+  const conditions: Condition[] = [];
+  if (Array.isArray(q.conditions)) {
+    q.conditions.forEach((c, i) => {
+      const parsed = validateEngagementCondition(c, i, errors);
+      if (parsed) conditions.push(parsed);
+    });
+  }
+
+  if (typeof q.logic === 'string' && q.logic.trim().length > 0 && conditions.length > 0) {
+    try {
+      const ast = parseLogic(q.logic);
+      const refs = collectIndices(ast);
+      for (const ref of refs) {
+        if (ref < 1 || ref > conditions.length) {
+          errors.push(
+            `'engagementsView.query.logic' references condition ${ref}, but only ${conditions.length} conditions are defined.`
+          );
+        }
+      }
+    } catch (err) {
+      if (err instanceof LogicParseError) {
+        errors.push(`'engagementsView.query.logic' is malformed: ${err.message}`);
+      } else {
+        errors.push(`'engagementsView.query.logic' could not be parsed: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  if (errors.length > 0) return null;
+
+  const query: EngagementsQuery = {
+    fields: (q.fields as string[]).map((f) => f.trim()),
+    conditions,
+    logic: q.logic as string,
+  };
+
+  const ev = input as Record<string, unknown>;
+  const result: EngagementsViewConfig = { query };
+
+  if ('callDurations' in ev) {
+    const raw = ev.callDurations;
+    if (!Array.isArray(raw) || raw.length === 0 || raw.some((d) => typeof d !== 'string' || d.trim().length === 0)) {
+      errors.push(`'engagementsView.callDurations' must be a non-empty array of non-empty strings.`);
+    } else {
+      result.callDurations = raw.map((d) => (d as string).trim());
+    }
+  }
+
+  if ('customerCallAction' in ev)
+    result.customerCallAction = validateCallAction(ev.customerCallAction, 'engagementsView.customerCallAction', errors) ?? undefined;
+  if ('internalCallAction' in ev)
+    result.internalCallAction = validateCallAction(ev.internalCallAction, 'engagementsView.internalCallAction', errors) ?? undefined;
+  if ('endCallAction' in ev)
+    result.endCallAction = validateSimpleAction(ev.endCallAction, 'engagementsView.endCallAction', errors) ?? undefined;
+  if ('workingAction' in ev)
+    result.workingAction = validateSimpleAction(ev.workingAction, 'engagementsView.workingAction', errors) ?? undefined;
+
+  return result;
+}
+
+function validateEngagementCondition(
+  input: unknown,
+  index: number,
+  errors: string[]
+): Condition | null {
+  const prefix = `engagementsView.query.conditions[${index}]`;
+  if (!isObject(input)) {
+    errors.push(`${prefix} must be an object.`);
+    return null;
+  }
+  const obj = input as Record<string, unknown>;
+  const field = obj.field;
+  const operator = obj.operator;
+  const value = obj.value;
+  let ok = true;
+
+  if (typeof field !== 'string' || field.trim().length === 0) {
+    errors.push(`${prefix}.field must be a non-empty string.`);
+    ok = false;
+  }
+  if (typeof operator !== 'string' || !SUPPORTED_OPERATORS.includes(operator as Operator)) {
+    errors.push(
+      `${prefix}.operator must be one of: ${SUPPORTED_OPERATORS.join(', ')}. Got '${String(operator)}'.`
+    );
+    ok = false;
+  }
+  if (operator === 'IN') {
+    if (!Array.isArray(value)) {
+      errors.push(`${prefix}.value must be an array when operator is IN.`);
+      ok = false;
+    } else if (value.length === 0) {
+      errors.push(`${prefix}.value is an empty array (would produce invalid SOQL).`);
+      ok = false;
+    }
+  } else if (operator === 'LIKE') {
+    if (typeof value !== 'string') {
+      errors.push(`${prefix}.value must be a string when operator is LIKE.`);
+      ok = false;
+    }
+  } else {
+    if (!isScalar(value)) {
+      errors.push(`${prefix}.value must be a string, number, boolean, or null for operator ${String(operator)}.`);
+      ok = false;
+    }
+  }
+
+  if (!ok) return null;
+  return { field: field as string, operator: operator as Operator, value: value as any };
 }
 
 // ============ Helpers ============

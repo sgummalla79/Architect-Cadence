@@ -1,13 +1,18 @@
 // Pure log-store helpers — no Electron, no fs. Just data transformations.
 // Kept separate from `log-store.ts` so unit tests don't need to load `electron`.
 
-export type LogLevel = 'info' | 'success' | 'error';
+export type LogLevel = 'info' | 'success' | 'warn' | 'error';
+
+/** Which subsystem produced this entry. */
+export type LogSource = 'scheduler' | 'engagements';
 
 export interface LogEntry {
   /** ISO 8601 timestamp. */
   ts: string;
   level: LogLevel;
   message: string;
+  /** Which subsystem produced this entry. */
+  source?: LogSource;
   durationMs?: number;
   matchedCount?: number;
   updatedCount?: number;

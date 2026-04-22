@@ -1,11 +1,11 @@
 {
-  "name": "architect-cadence",
-  "productName": "Architect Cadence",
+  "name": "architect-companion",
+  "productName": "Architect Companion",
   "version": "0.1.0",
   "description": "Scheduled Salesforce data updates",
   "author": {
-    "name": "Architect Cadence",
-    "email": "noreply@architect-cadence.local"
+    "name": "Architect Companion",
+    "email": "noreply@architect-companion.local"
   },
   "license": "MIT",
   "main": "dist/main/index.js",
@@ -39,9 +39,9 @@
     "node-cron": "^4.2.1"
   },
   "build": {
-    "appId": "com.architectcadence.app",
-    "productName": "Architect Cadence",
-    "copyright": "Copyright © 2026 Architect Cadence",
+    "appId": "com.architectcompanion.app",
+    "productName": "Architect Companion",
+    "copyright": "Copyright © 2026 Architect Companion",
     "directories": {
       "output": "dist-installers",
       "buildResources": "build"
@@ -104,7 +104,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Architect Cadence"
+      "shortcutName": "Architect Companion"
     }
   }
 }

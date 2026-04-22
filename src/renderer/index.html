@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
-    <title>Architect Cadence</title>
+    <title>Architect Companion</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -12,17 +12,17 @@
       <div class="chrome">
         <header class="app-header">
           <div class="app-icon" id="appIcon">
-            <img src="assets/icon.svg" alt="Architect Cadence" width="44" height="44" draggable="false" />
+            <img src="assets/icon.svg" alt="Architect Companion" width="44" height="44" draggable="false" />
           </div>
           <div class="app-meta">
-            <h1>Architect Cadence</h1>
+            <h1>Architect Companion</h1>
             <p>Auto-update Architect Engagements daily</p>
+            <p class="app-session" id="appSession">
+              <span id="authConnected" hidden>Connected as: <strong id="authUsername"></strong> <button class="btn-signout" id="signOutBtn">Sign out</button></span>
+              <button class="btn-signout" id="signInBtn" hidden>Sign in to Salesforce</button>
+            </p>
           </div>
           <div class="header-actions">
-            <span class="status-chip disconnected" id="connStatus">
-              <span class="status-dot"></span>
-              <span class="status-label">Disconnected</span>
-            </span>
             <button class="pill" id="activeToggle">
               <span class="pill-dot"></span>
               <span class="pill-label">Active</span>
@@ -31,8 +31,8 @@
         </header>
 
         <nav class="tabs">
-          <button class="tab active" data-tab="schedule">Schedule</button>
-          <button class="tab" data-tab="connection">Connection</button>
+          <button class="tab active" data-tab="engagements">Engagements</button>
+          <button class="tab" data-tab="logs">Logs</button>
           <button class="tab" data-tab="settings">Settings</button>
           <button class="tab" data-tab="about">About</button>
         </nav>
@@ -40,19 +40,34 @@
 
       <!-- ============ SCROLLABLE CONTENT ============ -->
       <main class="content">
-        <!-- TAB 1: Schedule -->
-        <section class="tab-panel active" data-panel="schedule">
+        <!-- TAB 1: Engagements -->
+        <section class="tab-panel active" data-panel="engagements">
+          <div class="eng-toolbar">
+            <span class="eng-count" id="engCount"></span>
+            <button class="btn-refresh" id="refreshEngBtn">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <path d="M13.5 8A5.5 5.5 0 1 1 10 3.07"/>
+                <polyline points="10 1 10 4 13 4"/>
+              </svg>
+              Refresh
+            </button>
+          </div>
+          <div class="eng-search-wrap">
+            <svg class="eng-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+              <circle cx="6.5" cy="6.5" r="5"/>
+              <line x1="10.5" y1="10.5" x2="14" y2="14"/>
+            </svg>
+            <input class="eng-search" id="engSearch" type="text" placeholder="Search by name or title…" autocomplete="off" spellcheck="false"/>
+            <button class="eng-search-clear" id="engSearchClear" hidden>✕</button>
+          </div>
+          <div class="eng-list" id="engList">
+            <div class="eng-empty">Loading…</div>
+          </div>
+        </section>
+
+        <!-- TAB 2: Logs -->
+        <section class="tab-panel" data-panel="logs">
           <div class="card">
-            <div class="row schedule-row">
-              <label class="row-label">DAILY RUN</label>
-              <input type="time" id="timeInput" class="time-input" value="15:22" />
-              <button class="btn btn-primary" id="runNowBtn">Run Now</button>
-            </div>
-
-            <div class="next-run" id="nextRun">Next run: today at 3:22 PM</div>
-
-            <div class="divider"></div>
-
             <div class="row logs-header">
               <label class="row-label">EXECUTION HISTORY</label>
               <div class="logs-header-controls">
@@ -73,27 +88,6 @@
           </div>
         </section>
 
-        <!-- TAB 2: Connection -->
-        <section class="tab-panel" data-panel="connection">
-          <div class="card">
-            <h2 class="section-title">Connection</h2>
-
-            <div class="conn-status">
-              <span class="conn-dot" id="connDot"></span>
-              <div class="conn-info">
-                <div class="conn-primary" id="connPrimary">Not connected</div>
-                <div class="conn-secondary" id="connSecondary">Sign in to authorize Salesforce access</div>
-              </div>
-            </div>
-
-            <div class="btn-row">
-              <button class="btn btn-primary" id="signInBtn">Sign in to Salesforce</button>
-              <button class="btn btn-secondary" id="testConnBtn" disabled>Test Connection</button>
-              <button class="btn btn-danger-ghost" id="resetBtn" disabled>Reset Connection</button>
-            </div>
-          </div>
-        </section>
-
         <!-- TAB 3: Settings -->
         <section class="tab-panel" data-panel="settings">
           <!-- Startup -->
@@ -103,7 +97,7 @@
               <div class="setting-info">
                 <div class="setting-label">Launch at startup</div>
                 <div class="setting-desc" id="startupDesc">
-                  Open Architect Cadence automatically when you log in. Starts hidden in the tray.
+                  Open Architect Companion automatically when you log in. Starts hidden in the tray.
                 </div>
               </div>
               <label class="switch">
@@ -134,7 +128,7 @@
         <section class="tab-panel" data-panel="about">
           <div class="card">
             <h2 class="section-title">About</h2>
-            <div class="config-row"><span>Application:</span><code>Architect Cadence</code></div>
+            <div class="config-row"><span>Application:</span><code>Architect Companion</code></div>
             <div class="config-row"><span>Version:</span><code>0.1.0</code></div>
             <div class="config-row"><span>Description:</span><code>Auto-updates Architect Engagements in Salesforce</code></div>
           </div>
@@ -146,6 +140,21 @@
           </div>
         </section>
       </main>
+
+      <!-- ============ STICKY FOOTER (all tabs) ============ -->
+      <footer class="sticky-footer">
+        <div class="footer-meta">
+          <div class="footer-label">Daily Schedule</div>
+          <div class="footer-next-run" id="nextRun"></div>
+        </div>
+        <div class="footer-controls">
+          <input type="time" id="timeInput" class="time-input" />
+          <button class="btn-run-now" id="runNowBtn">
+            <svg viewBox="0 0 12 14" fill="currentColor" width="11" height="13"><path d="M1 1l10 6-10 6V1z"/></svg>
+            Run Now
+          </button>
+        </div>
+      </footer>
 
       <div class="toast" id="toast"></div>
     </div>

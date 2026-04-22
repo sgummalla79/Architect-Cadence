@@ -63,7 +63,7 @@ describe('notifyScheduledRun', () => {
     expect(NotificationMock).toHaveBeenCalledOnce();
     expect(show).toHaveBeenCalledOnce();
     const callArg = NotificationMock.mock.calls[0][0] as { title: string; body: string };
-    expect(callArg.title).toBe('Architect Cadence');
+    expect(callArg.title).toBe('Architect Companion');
     expect(callArg.body).toMatch(/Updated 3/);
   });
 
@@ -87,7 +87,7 @@ describe('notifyScheduledRun', () => {
     expect(show).toHaveBeenCalledOnce();
 
     const callArg = NotificationMock.mock.calls[0][0] as { title: string; body: string };
-    expect(callArg.title).toBe('Architect Cadence');
+    expect(callArg.title).toBe('Architect Companion');
     expect(callArg.body).toMatch(/Guardrail triggered/);
   });
 

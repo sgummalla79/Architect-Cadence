@@ -14,7 +14,7 @@ import {
   serializeJsonl,
 } from './log-store-core';
 
-export type { LogEntry, LogLevel, LogWindow } from './log-store-core';
+export type { LogEntry, LogLevel, LogSource, LogWindow } from './log-store-core';
 
 const LOG_FILENAME = 'logs.jsonl';
 

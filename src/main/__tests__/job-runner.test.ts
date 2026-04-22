@@ -18,11 +18,13 @@ function makeConfig(overrides: Partial<JobConfig> = {}): JobConfig {
     object: 'Student__c',
     ownerFieldName: 'OwnerId',
     maxRecords: 15,
-    filters: {
-      conditions: [{ field: 'Final_Result__c', operator: '=', value: 'Withdrawn' }],
-      logic: '1',
+    dailySchedule: {
+      filters: {
+        conditions: [{ field: 'Final_Result__c', operator: '=', value: 'Withdrawn' }],
+        logic: '1',
+      },
+      updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
     },
-    updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
     ...overrides,
   };
 }
@@ -237,10 +239,16 @@ describe('runJob — update payload shape', () => {
 
     await runJob({
       config: makeConfig({
-        updateFields: [
-          { field: 'Final_Result__c', value: 'Distinction' },
-          { field: 'Notes__c', value: 'auto-updated' },
-        ],
+        dailySchedule: {
+          filters: {
+            conditions: [{ field: 'Final_Result__c', operator: '=', value: 'Withdrawn' }],
+            logic: '1',
+          },
+          updateFields: [
+            { field: 'Final_Result__c', value: 'Distinction' },
+            { field: 'Notes__c', value: 'auto-updated' },
+          ],
+        },
       }),
       isActive: true,
       client,

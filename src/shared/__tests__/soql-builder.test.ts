@@ -9,13 +9,15 @@ function makeConfig(overrides: Partial<JobConfig> = {}): JobConfig {
     object: 'Student__c',
     ownerFieldName: 'OwnerId',
     maxRecords: 15,
-    filters: {
-      conditions: [
-        { field: 'Final_Result__c', operator: '=', value: 'Withdrawn' },
-      ],
-      logic: '1',
+    dailySchedule: {
+      filters: {
+        conditions: [
+          { field: 'Final_Result__c', operator: '=', value: 'Withdrawn' },
+        ],
+        logic: '1',
+      },
+      updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
     },
-    updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
     ...overrides,
   };
 }
@@ -164,16 +166,19 @@ describe('buildSoql — structure', () => {
 
   test('matches the spec example: "1 AND 2" with string + IN', () => {
     const config = makeConfig({
-      filters: {
-        conditions: [
-          { field: 'Final_Result__c', operator: '=', value: 'Withdrawn' },
-          {
-            field: 'Id',
-            operator: 'IN',
-            value: ['a0uKd00000L6xfQIAR', 'a0uKd00000L6xfRIAR', 'a0uKd00000L6xkpIAB'],
-          },
-        ],
-        logic: '1 AND 2',
+      dailySchedule: {
+        filters: {
+          conditions: [
+            { field: 'Final_Result__c', operator: '=', value: 'Withdrawn' },
+            {
+              field: 'Id',
+              operator: 'IN',
+              value: ['a0uKd00000L6xfQIAR', 'a0uKd00000L6xfRIAR', 'a0uKd00000L6xkpIAB'],
+            },
+          ],
+          logic: '1 AND 2',
+        },
+        updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
       },
     });
     const { soql } = buildSoql(config, { currentUserId: '005XXXX' });
@@ -188,13 +193,16 @@ describe('buildSoql — structure', () => {
 
   test('nested logic "1 AND (2 OR 3)"', () => {
     const config = makeConfig({
-      filters: {
-        conditions: [
-          { field: 'A__c', operator: '=', value: 1 },
-          { field: 'B__c', operator: '=', value: 2 },
-          { field: 'C__c', operator: '=', value: 3 },
-        ],
-        logic: '1 AND (2 OR 3)',
+      dailySchedule: {
+        filters: {
+          conditions: [
+            { field: 'A__c', operator: '=', value: 1 },
+            { field: 'B__c', operator: '=', value: 2 },
+            { field: 'C__c', operator: '=', value: 3 },
+          ],
+          logic: '1 AND (2 OR 3)',
+        },
+        updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
       },
     });
     const { whereExpression } = buildSoql(config, { currentUserId: '005' });
@@ -207,12 +215,15 @@ describe('buildSoql — structure', () => {
 
   test('owner filter is always appended with AND, even when logic is a single OR', () => {
     const config = makeConfig({
-      filters: {
-        conditions: [
-          { field: 'A__c', operator: '=', value: 1 },
-          { field: 'B__c', operator: '=', value: 2 },
-        ],
-        logic: '1 OR 2',
+      dailySchedule: {
+        filters: {
+          conditions: [
+            { field: 'A__c', operator: '=', value: 1 },
+            { field: 'B__c', operator: '=', value: 2 },
+          ],
+          logic: '1 OR 2',
+        },
+        updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
       },
     });
     const { whereExpression } = buildSoql(config, { currentUserId: '005' });
@@ -272,9 +283,12 @@ describe('buildSoql — structure', () => {
 
   test('throws if logic references out-of-range condition', () => {
     const config = makeConfig({
-      filters: {
-        conditions: [{ field: 'A__c', operator: '=', value: 1 }],
-        logic: '1 AND 5',
+      dailySchedule: {
+        filters: {
+          conditions: [{ field: 'A__c', operator: '=', value: 1 }],
+          logic: '1 AND 5',
+        },
+        updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
       },
     });
     expect(() => buildSoql(config, { currentUserId: '005' })).toThrow(

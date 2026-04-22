@@ -183,7 +183,7 @@ function catchCallback(opts: CatchCallbackOptions): Promise<CallbackParams> {
 function renderCallbackPage(result: CallbackParams): string {
   const title = result.ok ? 'Signed in successfully' : 'Sign-in failed';
   const message = result.ok
-    ? 'You can close this tab and return to Architect Cadence.'
+    ? 'You can close this tab and return to Architect Companion.'
     : `Error: ${escapeHtml(result.error)}${result.errorDescription ? ' — ' + escapeHtml(result.errorDescription) : ''}`;
   const accent = result.ok ? '#3fb950' : '#f85149';
   return `<!DOCTYPE html>

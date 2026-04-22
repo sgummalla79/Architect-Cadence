@@ -9,21 +9,19 @@ function goodConfig() {
     domain: 'exp-cloud.my.salesforce.com',
     apiVersion: 'v66.0',
     logLevel: 'info',
-    object: 'Student__c',
-    filters: {
-      conditions: [
-        { field: 'Final_Result__c', operator: '=', value: 'Withdrawn' },
-        {
-          field: 'Id',
-          operator: 'IN',
-          value: ['a0uKd00000L6xfQIAR', 'a0uKd00000L6xfRIAR'],
-        },
-      ],
-      logic: '1 AND 2',
-    },
+    object: 'Engagement__c',
     ownerFieldName: 'OwnerId',
-    updateFields: [{ field: 'Final_Result__c', value: 'Distinction' }],
     maxRecords: 15,
+    dailySchedule: {
+      filters: {
+        conditions: [
+          { field: 'Stage__c', operator: '=', value: 'Delivery' },
+          { field: 'Engagement_Status__c', operator: '!=', value: 'Waiting on Customer' },
+        ],
+        logic: '1 AND 2',
+      },
+      updateFields: [{ field: 'Engagement_Status__c', value: 'Waiting on Customer' }],
+    },
   };
 }
 
@@ -32,9 +30,9 @@ describe('validateConfig — happy path', () => {
     const r = validateConfig(goodConfig());
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.config.object).toBe('Student__c');
+      expect(r.config.object).toBe('Engagement__c');
       expect(r.config.maxRecords).toBe(15);
-      expect(r.config.filters.conditions).toHaveLength(2);
+      expect(r.config.dailySchedule.filters.conditions).toHaveLength(2);
       expect(r.config.logLevel).toBe('info');
     }
   });
@@ -108,17 +106,17 @@ describe('validateConfig — maxRecords', () => {
   });
 });
 
-describe('validateConfig — filters.conditions', () => {
+describe('validateConfig — dailySchedule.filters.conditions', () => {
   test('empty array fails', () => {
     const c: any = goodConfig();
-    c.filters.conditions = [];
+    c.dailySchedule.filters.conditions = [];
     const r = validateConfig(c);
     expect(r.ok).toBe(false);
   });
 
   test('invalid operator fails', () => {
     const c: any = goodConfig();
-    c.filters.conditions[0].operator = '~';
+    c.dailySchedule.filters.conditions[0].operator = '~';
     const r = validateConfig(c);
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -128,59 +126,62 @@ describe('validateConfig — filters.conditions', () => {
 
   test('IN with non-array value fails', () => {
     const c: any = goodConfig();
-    c.filters.conditions[1].value = 'not-an-array';
+    c.dailySchedule.filters.conditions.push({ field: 'Id', operator: 'IN', value: ['abc'] });
+    c.dailySchedule.filters.logic = '1 AND 2 AND 3';
+    c.dailySchedule.filters.conditions[2].value = 'not-an-array';
     const r = validateConfig(c);
     expect(r.ok).toBe(false);
   });
 
   test('IN with empty array fails', () => {
     const c: any = goodConfig();
-    c.filters.conditions[1].value = [];
+    c.dailySchedule.filters.conditions.push({ field: 'Id', operator: 'IN', value: [] });
+    c.dailySchedule.filters.logic = '1 AND 2 AND 3';
     expect(validateConfig(c).ok).toBe(false);
   });
 
   test('= with array value fails', () => {
     const c: any = goodConfig();
-    c.filters.conditions[0].value = ['a', 'b'];
+    c.dailySchedule.filters.conditions[0].value = ['a', 'b'];
     expect(validateConfig(c).ok).toBe(false);
   });
 
   test('LIKE with number fails', () => {
     const c: any = goodConfig();
-    c.filters.conditions[0].operator = 'LIKE';
-    c.filters.conditions[0].value = 42;
+    c.dailySchedule.filters.conditions[0].operator = 'LIKE';
+    c.dailySchedule.filters.conditions[0].value = 42;
     expect(validateConfig(c).ok).toBe(false);
   });
 
   test('missing field on condition fails', () => {
     const c: any = goodConfig();
-    delete c.filters.conditions[0].field;
+    delete c.dailySchedule.filters.conditions[0].field;
     expect(validateConfig(c).ok).toBe(false);
   });
 
   test('all comparison operators accepted', () => {
     for (const op of ['=', '!=', '<', '>', '<=', '>=', 'LIKE']) {
       const c: any = goodConfig();
-      c.filters.conditions = [
+      c.dailySchedule.filters.conditions = [
         { field: 'F__c', operator: op, value: op === 'LIKE' ? 'abc%' : 5 },
       ];
-      c.filters.logic = '1';
+      c.dailySchedule.filters.logic = '1';
       const r = validateConfig(c);
       expect(r.ok).toBe(true);
     }
   });
 });
 
-describe('validateConfig — filters.logic', () => {
+describe('validateConfig — dailySchedule.filters.logic', () => {
   test('empty logic fails', () => {
     const c: any = goodConfig();
-    c.filters.logic = '';
+    c.dailySchedule.filters.logic = '';
     expect(validateConfig(c).ok).toBe(false);
   });
 
   test('malformed logic fails with a clear message', () => {
     const c: any = goodConfig();
-    c.filters.logic = '1 AND';
+    c.dailySchedule.filters.logic = '1 AND';
     const r = validateConfig(c);
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -190,7 +191,7 @@ describe('validateConfig — filters.logic', () => {
 
   test('out-of-range index fails with clear message', () => {
     const c: any = goodConfig();
-    c.filters.logic = '1 AND 5'; // only 2 conditions exist
+    c.dailySchedule.filters.logic = '1 AND 5'; // only 2 conditions exist
     const r = validateConfig(c);
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -200,28 +201,28 @@ describe('validateConfig — filters.logic', () => {
 
   test('nested logic with valid indices passes', () => {
     const c: any = goodConfig();
-    c.filters.conditions.push({ field: 'Extra__c', operator: '=', value: 'z' });
-    c.filters.logic = '1 AND (2 OR 3)';
+    c.dailySchedule.filters.conditions.push({ field: 'Extra__c', operator: '=', value: 'z' });
+    c.dailySchedule.filters.logic = '1 AND (2 OR 3)';
     expect(validateConfig(c).ok).toBe(true);
   });
 });
 
-describe('validateConfig — updateFields', () => {
+describe('validateConfig — dailySchedule.updateFields', () => {
   test('empty array fails', () => {
     const c: any = goodConfig();
-    c.updateFields = [];
+    c.dailySchedule.updateFields = [];
     expect(validateConfig(c).ok).toBe(false);
   });
 
   test('update value can be null', () => {
     const c: any = goodConfig();
-    c.updateFields = [{ field: 'F__c', value: null }];
+    c.dailySchedule.updateFields = [{ field: 'F__c', value: null }];
     expect(validateConfig(c).ok).toBe(true);
   });
 
   test('missing field throws', () => {
     const c: any = goodConfig();
-    c.updateFields = [{ value: 'x' }];
+    c.dailySchedule.updateFields = [{ value: 'x' }];
     expect(validateConfig(c).ok).toBe(false);
   });
 });
@@ -230,7 +231,7 @@ describe('loadConfig — file I/O', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cadence-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-test-'));
   });
 
   afterEach(() => {
